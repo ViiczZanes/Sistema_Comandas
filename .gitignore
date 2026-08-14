@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# banco SQLite local (não deve ir para o controle de versão)
+/prisma/dev.db
+/dev.db
+*.db
+*.db-journal
+.claude
+CLAUDE.md

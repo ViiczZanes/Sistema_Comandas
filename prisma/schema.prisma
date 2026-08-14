@@ -1,0 +1,287 @@
+// Prisma schema — Sistema PDV (Pedidos por QR Code, Mesa e Comanda)
+//
+// Banco atual: SQLite (arquivo local, zero configuração para desenvolver).
+// Banco de produção: PostgreSQL (ver README > "Migrando para PostgreSQL").
+//
+// Regras seguidas para manter o schema portátil entre SQLite e PostgreSQL:
+// - IDs são String @id @default(cuid()) (nunca autoincrement de inteiro,
+//   que tem comportamento diferente entre os dois bancos).
+// - Dinheiro é guardado em centavos (Int), nunca Float/Decimal — evita
+//   problemas de precisão e diferenças de tipo Decimal entre bancos.
+// - Enums são usados normalmente: o Prisma já emula enum no SQLite como
+//   CHECK constraint e usa o tipo nativo no Postgres, então o schema não
+//   muda ao migrar.
+// - Não há nenhum recurso exclusivo de um provider (sem `@db.*` nativos).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------------------
+// Usuários / staff (Administração, PDV, Cozinha)
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  WAITER // Operador de PDV / garçom
+  KITCHEN // Cozinha (KDS)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions Session[]
+  payments Payment[] @relation("PaymentRegisteredBy")
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Mesa — QR Code = localização ("onde entregar")
+// ---------------------------------------------------------------------------
+
+enum TableStatus {
+  FREE // Livre
+  OCCUPIED // Ocupada
+  AWAITING_PAYMENT // Aguardando pagamento
+}
+
+model RestaurantTable {
+  id        String      @id @default(cuid())
+  number    Int         @unique
+  qrToken   String      @unique @default(cuid())
+  status    TableStatus @default(FREE)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  comandas Comanda[]
+  orders   Order[]
+
+  @@map("tables")
+}
+
+// ---------------------------------------------------------------------------
+// Comanda — QR Code = identidade da conta ("quem paga")
+// ---------------------------------------------------------------------------
+
+enum ComandaStatus {
+  OPEN
+  AWAITING_PAYMENT
+  CLOSED
+}
+
+model Comanda {
+  id       String        @id @default(cuid())
+  number   Int           @unique
+  token    String        @unique @default(cuid())
+  status   ComandaStatus @default(OPEN)
+  openedAt DateTime      @default(now())
+  closedAt DateTime?
+
+  // Mesa "atual" da comanda, para consulta rápida no PDV. É apenas uma
+  // referência de conveniência — a fonte de verdade de onde cada pedido
+  // foi entregue continua sendo Order.tableId.
+  currentTableId String?
+  currentTable   RestaurantTable? @relation(fields: [currentTableId], references: [id])
+
+  orders   Order[]
+  payments Payment[]
+
+  @@map("comandas")
+}
+
+// ---------------------------------------------------------------------------
+// Cardápio
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  categoryId  String
+  name        String
+  description String?
+  priceCents  Int
+  image       String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category Category        @relation(fields: [categoryId], references: [id])
+  options  ProductOption[]
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+enum ProductOptionType {
+  ADDITIONAL // Adicional (soma ao preço) — ex: + Bacon R$ 5,00
+  REMOVABLE // Removível (não altera preço) — ex: sem cebola
+}
+
+model ProductOption {
+  id         String            @id @default(cuid())
+  productId  String
+  name       String
+  type       ProductOptionType
+  priceCents Int               @default(0)
+  active     Boolean           @default(true)
+  sortOrder  Int               @default(0)
+
+  product          Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItemOptions OrderItemOption[]
+
+  @@index([productId])
+  @@map("product_options")
+}
+
+// ---------------------------------------------------------------------------
+// Contador utilitário — usado para gerar o número sequencial dos pedidos
+// (#1041, #1042, ...) de forma atômica e portátil entre bancos.
+// ---------------------------------------------------------------------------
+
+model Counter {
+  name  String @id
+  value Int    @default(0)
+
+  @@map("counters")
+}
+
+// ---------------------------------------------------------------------------
+// Pedido — vínculo com Mesa (onde entregar) e Comanda (quem paga)
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  NEW
+  ACCEPTED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  // Número sequencial de exibição (#1042). Gerado pela aplicação a partir
+  // do model Counter, dentro de uma transação — não usamos autoincrement()
+  // do banco porque SQLite só permite isso na chave primária, e queremos
+  // o mesmo comportamento em PostgreSQL.
+  number      Int         @unique
+  tableId     String
+  comandaId   String
+  status      OrderStatus @default(NEW)
+  totalCents  Int         @default(0)
+  note        String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  table   RestaurantTable @relation(fields: [tableId], references: [id])
+  comanda Comanda         @relation(fields: [comandaId], references: [id])
+  items   OrderItem[]
+
+  @@index([tableId])
+  @@index([comandaId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  productId      String
+  productName    String // snapshot do nome no momento do pedido
+  quantity       Int
+  unitPriceCents Int // snapshot do preço no momento do pedido
+  subtotalCents  Int
+  observation    String?
+
+  order   Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product            @relation(fields: [productId], references: [id])
+  options OrderItemOption[]
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderItemOption {
+  id             String            @id @default(cuid())
+  orderItemId    String
+  optionId       String
+  optionName     String // snapshot
+  type           ProductOptionType // snapshot
+  priceCents     Int               // snapshot
+
+  orderItem OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  option    ProductOption @relation(fields: [optionId], references: [id])
+
+  @@index([orderItemId])
+  @@map("order_item_options")
+}
+
+// ---------------------------------------------------------------------------
+// Pagamento — feito por comanda (fecha a conta daquela pessoa)
+// ---------------------------------------------------------------------------
+
+enum PaymentMethod {
+  CASH
+  CREDIT
+  DEBIT
+  PIX
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  comandaId   String
+  method      PaymentMethod
+  amountCents Int
+  registeredById String?
+  paidAt      DateTime      @default(now())
+  // Marca o pagamento que quitou o saldo e fechou a comanda (para relatórios
+  // de "comandas fechadas" — a comanda em si volta a ficar OPEN na hora,
+  // pronta pra outro cliente, então seu status não serve mais como marcador
+  // histórico de fechamento).
+  closesComanda Boolean     @default(false)
+
+  comanda    Comanda @relation(fields: [comandaId], references: [id])
+  registeredBy User? @relation("PaymentRegisteredBy", fields: [registeredById], references: [id])
+
+  @@index([comandaId])
+  @@map("payments")
+}
