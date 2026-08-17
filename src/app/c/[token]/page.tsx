@@ -6,6 +6,7 @@ import { formatCents } from "@/lib/money";
 import { COMANDA_STATUS_LABEL, COMANDA_STATUS_TONE } from "@/lib/statusLabels";
 import { Badge } from "@/components/ui/Badge";
 import { Logo } from "@/components/Logo";
+import { HelpButton } from "@/components/HelpButton";
 import { PayButton } from "./PayButton";
 import { AutoRefresh } from "./AutoRefresh";
 
@@ -55,6 +56,12 @@ export default async function ComandaBillPage({
         className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,theme(colors.brand.100),transparent)]"
       />
       <AutoRefresh enabled={comanda.status !== "CLOSED"} />
+      {/* Sem tableToken nesta página — só dá pra chamar ajuda se a comanda
+          já estiver sentada em alguma mesa agora (currentTable conhecida).
+          Sem isso, não tem como o servidor saber pra onde mandar a equipe. */}
+      {comanda.status !== "CLOSED" && currentTable && (
+        <HelpButton comandaToken={token} />
+      )}
 
       <div className="flex justify-center">
         <Logo size="sm" withWordmark={false} name={settings.restaurantName} logoUrl={settings.logoUrl} />

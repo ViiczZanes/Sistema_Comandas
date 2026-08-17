@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Inbox,
   ChefHat,
   Flame,
   BellRing,
   MessageSquareWarning,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Spinner";
@@ -16,6 +18,9 @@ import {
   NEXT_ORDER_STATUS,
   NEXT_ORDER_STATUS_LABEL,
 } from "@/lib/statusLabels";
+import { playNewOrderChime, primeNotificationSound } from "@/lib/notificationSound";
+
+const SOUND_PREF_KEY = "comandas:kitchen-sound";
 
 type OrderItemOptionDTO = {
   id: string;
@@ -95,6 +100,41 @@ export function KitchenBoard() {
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [, forceTick] = useState(0);
+  const [soundOn, setSoundOn] = useState(true);
+  const soundOnRef = useRef(soundOn);
+  useEffect(() => {
+    soundOnRef.current = soundOn;
+  }, [soundOn]);
+
+  // Preferência de som fica salva por navegador — é a mesma tela fixa da
+  // cozinha o turno inteiro, então isso sobrevive a um F5 acidental. Some
+  // no primeiro render (igual ao `reload()` abaixo) e ajusta assim que o
+  // valor salvo é lido no cliente.
+  useEffect(() => {
+    const saved = window.localStorage.getItem(SOUND_PREF_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved !== null) setSoundOn(saved !== "off");
+  }, []);
+
+  function toggleSound() {
+    setSoundOn((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(SOUND_PREF_KEY, next ? "on" : "off");
+      return next;
+    });
+  }
+
+  // Navegador só libera áudio depois de alguma interação — "destrava" o
+  // contexto de áudio no primeiro clique/toque em qualquer lugar da tela.
+  useEffect(() => {
+    const prime = () => primeNotificationSound();
+    window.addEventListener("pointerdown", prime, { once: true });
+    window.addEventListener("keydown", prime, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", prime);
+      window.removeEventListener("keydown", prime);
+    };
+  }, []);
 
   const reload = useCallback(async () => {
     const res = await fetch("/api/orders?status=active");
@@ -114,7 +154,21 @@ export function KitchenBoard() {
     const source = new EventSource("/api/kitchen/stream");
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
-    source.onmessage = () => reload();
+    source.onmessage = (event) => {
+      reload();
+      // Só toca o bipe quando é pedido NOVO chegando — "order-updated"
+      // (mudança de status, geralmente causada pela própria cozinha
+      // clicando em "Aceitar"/"Marcar pronto") não precisa de alerta.
+      try {
+        const data = JSON.parse(event.data) as { type?: string };
+        if (data.type === "order-created" && soundOnRef.current) {
+          playNewOrderChime();
+        }
+      } catch {
+        // mensagens de heartbeat (comentário SSE) não chegam em onmessage;
+        // qualquer payload que não seja JSON válido é só ignorado.
+      }
+    };
     return () => source.close();
   }, [reload]);
 
@@ -147,20 +201,35 @@ export function KitchenBoard() {
             Atualiza sozinho quando um pedido novo chega.
           </p>
         </div>
-        <span className="flex items-center gap-2 rounded-full bg-stone-800 px-3 py-1.5 text-xs font-semibold text-stone-300">
-          <span className="relative flex h-2 w-2">
-            {connected && (
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleSound}
+            title={soundOn ? "Desativar som de pedido novo" : "Ativar som de pedido novo"}
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+              soundOn
+                ? "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25"
             )}
-            <span
-              className={cn(
-                "relative inline-flex h-2 w-2 rounded-full",
-                connected ? "bg-emerald-400" : "bg-stone-500"
+          >
+            {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </button>
+          <span className="flex items-center gap-2 rounded-full bg-stone-800 px-3 py-1.5 text-xs font-semibold text-stone-300">
+            <span className="relative flex h-2 w-2">
+              {connected && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               )}
-            />
+              <span
+                className={cn(
+                  "relative inline-flex h-2 w-2 rounded-full",
+                  connected ? "bg-emerald-400" : "bg-stone-500"
+                )}
+              />
+            </span>
+            {connected ? "Ao vivo" : "Conectando..."}
           </span>
-          {connected ? "Ao vivo" : "Conectando..."}
-        </span>
+        </div>
       </div>
 
       {loading ? (

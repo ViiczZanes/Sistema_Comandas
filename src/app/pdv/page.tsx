@@ -3,6 +3,7 @@ import { Ticket, Grid3x3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { TABLE_STATUS_LABEL } from "@/lib/statusLabels";
 import { PdvAutoRefresh } from "@/components/PdvAutoRefresh";
+import { HelpCallsBanner } from "@/components/HelpCallsBanner";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -28,6 +29,7 @@ export default async function PdvPage() {
   return (
     <div className="flex flex-1 flex-col">
       <PdvAutoRefresh />
+      <HelpCallsBanner />
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-stone-900">Mesas</h1>

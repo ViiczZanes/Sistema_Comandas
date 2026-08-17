@@ -18,6 +18,7 @@ import { randomId } from "@/lib/id";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Logo } from "@/components/Logo";
+import { HelpButton } from "@/components/HelpButton";
 import { ProductRow, type ProductDTO } from "./ProductRow";
 
 export type CategoryDTO = {
@@ -204,6 +205,14 @@ export function MenuClient({
           </section>
         ))}
       </main>
+
+      {!cartOpen && (
+        <HelpButton
+          comandaToken={comandaToken}
+          tableToken={tableToken}
+          raised={itemCount > 0}
+        />
+      )}
 
       {itemCount > 0 && !cartOpen && (
         <button

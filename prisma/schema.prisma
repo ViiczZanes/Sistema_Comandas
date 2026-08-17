@@ -97,8 +97,9 @@ model RestaurantTable {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
-  comandas Comanda[]
-  orders   Order[]
+  comandas  Comanda[]
+  orders    Order[]
+  helpCalls HelpCall[]
 
   @@map("tables")
 }
@@ -127,8 +128,9 @@ model Comanda {
   currentTableId String?
   currentTable   RestaurantTable? @relation(fields: [currentTableId], references: [id])
 
-  orders   Order[]
-  payments Payment[]
+  orders    Order[]
+  payments  Payment[]
+  helpCalls HelpCall[]
 
   @@map("comandas")
 }
@@ -303,4 +305,25 @@ model Payment {
 
   @@index([comandaId])
   @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Chamado de ajuda — botão "Preciso de ajuda" na tela do cliente. Cobre as
+// exceções do fluxo autônomo (dúvida, item errado, etc.) sem o cliente
+// precisar se levantar. Aparece só no PDV (é quem circula pelo salão).
+// ---------------------------------------------------------------------------
+
+model HelpCall {
+  id      String @id @default(cuid())
+  tableId String
+  table   RestaurantTable @relation(fields: [tableId], references: [id])
+
+  comandaId String
+  comanda   Comanda @relation(fields: [comandaId], references: [id])
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([resolvedAt])
+  @@map("help_calls")
 }
