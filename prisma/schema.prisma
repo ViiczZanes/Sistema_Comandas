@@ -160,6 +160,11 @@ model Product {
   priceCents  Int
   image       String?
   active      Boolean  @default(true)
+  // Diferente de `active` (gestão permanente do cardápio, só em
+  // Administração): `soldOut` é o "86" do dia a dia — faltou o insumo no
+  // meio do serviço, a equipe marca rápido pelo PDV e desmarca quando
+  // reabastecer. O produto continua cadastrado e ativo o tempo todo.
+  soldOut     Boolean  @default(false)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

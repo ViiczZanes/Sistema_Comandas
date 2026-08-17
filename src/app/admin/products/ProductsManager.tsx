@@ -34,6 +34,7 @@ type ProductDTO = {
   priceCents: number;
   image: string | null;
   active: boolean;
+  soldOut: boolean;
   category: { id: string; name: string };
   options: OptionDTO[];
 };
@@ -191,6 +192,9 @@ export function ProductsManager({
                       <Badge tone={product.active ? "green" : "neutral"}>
                         {product.active ? "Ativo" : "Inativo"}
                       </Badge>
+                      {product.soldOut && (
+                        <Badge tone="red">Esgotado hoje</Badge>
+                      )}
                       <span className="text-xs text-stone-400">
                         {product.category.name}
                       </span>

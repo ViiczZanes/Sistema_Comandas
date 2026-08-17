@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, Minus, Plus, UtensilsCrossed, Check } from "lucide-react";
+import { ChevronDown, Minus, Plus, UtensilsCrossed, Check, Ban } from "lucide-react";
 import { formatCents } from "@/lib/money";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -20,6 +20,7 @@ export type ProductDTO = {
   description: string | null;
   priceCents: number;
   image: string | null;
+  soldOut: boolean;
   options: OptionDTO[];
 };
 
@@ -86,26 +87,37 @@ export function ProductRow({
     <div
       className={cn(
         "overflow-hidden rounded-2xl border bg-white transition-shadow",
-        open ? "border-brand-200 shadow-md shadow-brand-900/5" : "border-stone-200"
+        product.soldOut
+          ? "border-stone-200"
+          : open
+            ? "border-brand-200 shadow-md shadow-brand-900/5"
+            : "border-stone-200"
       )}
     >
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 p-3.5 text-left"
+        onClick={() => !product.soldOut && setOpen((v) => !v)}
+        aria-disabled={product.soldOut}
+        className={cn(
+          "flex w-full items-center gap-3 p-3.5 text-left",
+          product.soldOut && "cursor-default"
+        )}
       >
         {product.image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.image}
             alt=""
-            className="h-16 w-16 shrink-0 rounded-xl object-cover"
+            className={cn(
+              "h-16 w-16 shrink-0 rounded-xl object-cover",
+              product.soldOut && "grayscale"
+            )}
           />
         ) : (
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-300">
             <UtensilsCrossed className="h-6 w-6" />
           </div>
         )}
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0 flex-1", product.soldOut && "opacity-50")}>
           <p className="truncate font-semibold text-stone-900">{product.name}</p>
           {product.description && (
             <p className="mt-0.5 line-clamp-2 text-sm text-stone-500">
@@ -116,15 +128,22 @@ export function ProductRow({
             {formatCents(product.priceCents)}
           </p>
         </div>
-        <ChevronDown
-          className={cn(
-            "h-5 w-5 shrink-0 text-stone-400 transition-transform",
-            open && "rotate-180 text-brand-600"
-          )}
-        />
+        {product.soldOut ? (
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-500">
+            <Ban className="h-3.5 w-3.5" />
+            Esgotado
+          </span>
+        ) : (
+          <ChevronDown
+            className={cn(
+              "h-5 w-5 shrink-0 text-stone-400 transition-transform",
+              open && "rotate-180 text-brand-600"
+            )}
+          />
+        )}
       </button>
 
-      {open && (
+      {open && !product.soldOut && (
         <div className="animate-slide-up space-y-4 border-t border-stone-100 bg-stone-50/60 p-4">
           {additionals.length > 0 && (
             <div>

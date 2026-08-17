@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Ticket, Grid3x3 } from "lucide-react";
+import { Ticket, Grid3x3, Ban } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { TABLE_STATUS_LABEL } from "@/lib/statusLabels";
 import { PdvAutoRefresh } from "@/components/PdvAutoRefresh";
@@ -45,7 +45,14 @@ export default async function PdvPage() {
             </span>
           </div>
         </div>
-        <ComandaSearch />
+        <div className="flex items-end gap-2">
+          <Link href="/pdv/cardapio">
+            <Button variant="secondary" size="sm" icon={<Ban />}>
+              Cardápio de hoje
+            </Button>
+          </Link>
+          <ComandaSearch />
+        </div>
       </div>
 
       {tables.length === 0 ? (
