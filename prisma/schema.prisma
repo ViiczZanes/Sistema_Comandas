@@ -23,6 +23,25 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
+// Configurações do restaurante — linha única (id fixo "singleton"). Nome,
+// logo e cor de marca se propagam pro sistema inteiro (nav, telas do
+// cliente, QR Codes); o estilo do QR é usado só na geração/impressão.
+// ---------------------------------------------------------------------------
+
+model Settings {
+  id             String  @id @default("singleton")
+  restaurantName String  @default("Comandas")
+  logoUrl        String?
+  brandColorHex  String  @default("#c1401f")
+  qrDotStyle     String  @default("square") // square | dots | rounded | classy
+  qrLogoInCenter Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// ---------------------------------------------------------------------------
 // Usuários / staff (Administração, PDV, Cozinha)
 // ---------------------------------------------------------------------------
 

@@ -32,7 +32,15 @@ const ROLE_LABEL: Record<StaffUser["role"], string> = {
   KITCHEN: "Cozinha",
 };
 
-export function StaffNav({ user }: { user: StaffUser }) {
+export function StaffNav({
+  user,
+  restaurantName,
+  logoUrl,
+}: {
+  user: StaffUser;
+  restaurantName?: string;
+  logoUrl?: string | null;
+}) {
   const pathname = usePathname();
   const links = LINKS.filter((l) => l.roles.includes(user.role));
 
@@ -40,7 +48,7 @@ export function StaffNav({ user }: { user: StaffUser }) {
     <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5">
         <div className="flex items-center gap-6">
-          <Logo size="sm" />
+          <Logo size="sm" name={restaurantName} logoUrl={logoUrl} />
           <nav className="flex items-center gap-1">
             {links.map((link) => {
               const active =

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Receipt, Clock3, ShoppingBag } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { formatCents } from "@/lib/money";
 import { COMANDA_STATUS_LABEL, COMANDA_STATUS_TONE } from "@/lib/statusLabels";
 import { Badge } from "@/components/ui/Badge";
@@ -15,7 +16,10 @@ export default async function ComandaBillPage({
 }) {
   const { token } = await params;
 
-  const comanda = await prisma.comanda.findUnique({ where: { token } });
+  const [comanda, settings] = await Promise.all([
+    prisma.comanda.findUnique({ where: { token } }),
+    getSettings(),
+  ]);
   if (!comanda) notFound();
 
   // Só o atendimento atual: a comanda é um cartão físico reaproveitado por
@@ -53,7 +57,7 @@ export default async function ComandaBillPage({
       <AutoRefresh enabled={comanda.status !== "CLOSED"} />
 
       <div className="flex justify-center">
-        <Logo size="sm" withWordmark={false} />
+        <Logo size="sm" withWordmark={false} name={settings.restaurantName} logoUrl={settings.logoUrl} />
       </div>
 
       <header className="animate-slide-up flex flex-col items-center gap-3 text-center">

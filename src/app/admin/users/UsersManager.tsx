@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus } from "lucide-react";
+import { UserPlus, KeyRound, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -40,6 +40,7 @@ export function UsersManager({
     role: "WAITER" as Role,
   });
   const [loading, setLoading] = useState(false);
+  const [passwordPanelFor, setPasswordPanelFor] = useState<string | null>(null);
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -135,46 +136,120 @@ export function UsersManager({
 
       <Card className="divide-y divide-stone-100">
         {users.map((user) => (
-          <div
-            key={user.id}
-            className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-          >
-            <div>
-              <p className="font-medium text-stone-900">
-                {user.name}{" "}
-                {user.id === currentUserId && (
-                  <span className="text-xs text-stone-400">(você)</span>
-                )}
-              </p>
-              <p className="text-sm text-stone-500">{user.email}</p>
+          <div key={user.id} className="px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-medium text-stone-900">
+                  {user.name}{" "}
+                  {user.id === currentUserId && (
+                    <span className="text-xs text-stone-400">(você)</span>
+                  )}
+                </p>
+                <p className="text-sm text-stone-500">{user.email}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone={user.active ? "green" : "neutral"} dot>
+                  {user.active ? "Ativo" : "Inativo"}
+                </Badge>
+                <Select
+                  value={user.role}
+                  onChange={(e) => changeRole(user, e.target.value as Role)}
+                  className="w-40 py-1.5"
+                >
+                  {Object.entries(ROLE_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<KeyRound />}
+                  onClick={() =>
+                    setPasswordPanelFor(passwordPanelFor === user.id ? null : user.id)
+                  }
+                >
+                  Trocar senha
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={user.id === currentUserId}
+                  onClick={() => toggleActive(user)}
+                >
+                  {user.active ? "Desativar" : "Ativar"}
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge tone={user.active ? "green" : "neutral"} dot>
-                {user.active ? "Ativo" : "Inativo"}
-              </Badge>
-              <Select
-                value={user.role}
-                onChange={(e) => changeRole(user, e.target.value as Role)}
-                className="w-40 py-1.5"
-              >
-                {Object.entries(ROLE_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={user.id === currentUserId}
-                onClick={() => toggleActive(user)}
-              >
-                {user.active ? "Desativar" : "Ativar"}
-              </Button>
-            </div>
+            {passwordPanelFor === user.id && (
+              <PasswordPanel
+                user={user}
+                onDone={() => setPasswordPanelFor(null)}
+              />
+            )}
           </div>
         ))}
       </Card>
     </div>
+  );
+}
+
+function PasswordPanel({
+  user,
+  onDone,
+}: {
+  user: UserDTO;
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 6) {
+      toast.error("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error ?? "Não foi possível trocar a senha.");
+        return;
+      }
+      toast.success(`Senha de ${user.name} atualizada.`);
+      onDone();
+      router.refresh();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="animate-slide-up mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-stone-200 bg-stone-50/70 p-3"
+    >
+      <Field label={`Nova senha para ${user.name}`}>
+        <Input
+          type="password"
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="mínimo 6 caracteres"
+          className="w-56"
+        />
+      </Field>
+      <Button type="submit" size="sm" loading={loading} icon={<Check />}>
+        Confirmar
+      </Button>
+    </form>
   );
 }

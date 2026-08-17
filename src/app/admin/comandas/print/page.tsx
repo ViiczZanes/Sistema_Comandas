@@ -1,20 +1,20 @@
-import { Ticket } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { qrCodeDataUrl, comandaUrl } from "@/lib/qrcode";
+import { comandaUrl } from "@/lib/qrcode";
+import { getSettings } from "@/lib/settings";
+import { isQrDotStyle } from "@/lib/qrStyle";
 import { PrintButton } from "@/components/PrintButton";
-import { Logo } from "@/components/Logo";
+import { PrintComandasGrid } from "./PrintComandasGrid";
 
 export default async function PrintComandasPage() {
-  const comandas = await prisma.comanda.findMany({
-    orderBy: { number: "asc" },
-  });
+  const [comandas, settings] = await Promise.all([
+    prisma.comanda.findMany({ orderBy: { number: "asc" } }),
+    getSettings(),
+  ]);
 
-  const cards = await Promise.all(
-    comandas.map(async (comanda) => ({
-      number: comanda.number,
-      qr: await qrCodeDataUrl(comandaUrl(comanda.token)),
-    }))
-  );
+  const cards = comandas.map((comanda) => ({
+    number: comanda.number,
+    url: comandaUrl(comanda.token),
+  }));
 
   return (
     <div className="space-y-4">
@@ -30,27 +30,17 @@ export default async function PrintComandasPage() {
         <PrintButton />
       </div>
 
-      <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 print:grid-cols-3">
-        {cards.map((card) => (
-          <div
-            key={card.number}
-            className="flex flex-col items-center gap-3 rounded-2xl border border-stone-200 p-6 text-center break-inside-avoid print:rounded-none print:border-black"
-          >
-            <Logo size="sm" className="print:hidden" />
-            <p className="flex items-center gap-1.5 text-lg font-bold tracking-wide text-stone-900">
-              <Ticket className="h-4 w-4 text-brand-600 print:hidden" />
-              COMANDA #{card.number}
-            </p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={card.qr}
-              alt={`QR Code da comanda ${card.number}`}
-              width={200}
-              height={200}
-            />
-          </div>
-        ))}
-      </div>
+      <PrintComandasGrid
+        cards={cards}
+        restaurantName={settings.restaurantName}
+        logoUrl={settings.logoUrl}
+        qrStyle={{
+          color: settings.brandColorHex,
+          dotStyle: isQrDotStyle(settings.qrDotStyle) ? settings.qrDotStyle : "square",
+          logoUrl: settings.logoUrl,
+          useLogo: settings.qrLogoInCenter,
+        }}
+      />
     </div>
   );
 }

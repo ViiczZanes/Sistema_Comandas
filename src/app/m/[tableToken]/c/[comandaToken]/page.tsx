@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { MenuClient } from "./MenuClient";
 
 export default async function OrderPage({
@@ -42,6 +43,8 @@ export default async function OrderPage({
     );
   }
 
+  const settings = await getSettings();
+
   const categories = await prisma.category.findMany({
     where: { active: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -66,6 +69,8 @@ export default async function OrderPage({
       tableNumber={table.number}
       comandaNumber={comanda.number}
       categories={categories.filter((c) => c.products.length > 0)}
+      restaurantName={settings.restaurantName}
+      logoUrl={settings.logoUrl}
     />
   );
 }

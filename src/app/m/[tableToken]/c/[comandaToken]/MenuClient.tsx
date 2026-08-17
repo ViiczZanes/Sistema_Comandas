@@ -43,12 +43,16 @@ export function MenuClient({
   tableNumber,
   comandaNumber,
   categories,
+  restaurantName,
+  logoUrl,
 }: {
   tableToken: string;
   comandaToken: string;
   tableNumber: number;
   comandaNumber: number;
   categories: CategoryDTO[];
+  restaurantName: string;
+  logoUrl: string | null;
 }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -124,7 +128,7 @@ export function MenuClient({
       <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Logo size="sm" withWordmark={false} />
+            <Logo size="sm" withWordmark={false} name={restaurantName} logoUrl={logoUrl} />
             <div>
               <p className="text-[11px] font-bold tracking-wide text-brand-600 uppercase">
                 Mesa {tableNumber} · Comanda {comandaNumber}

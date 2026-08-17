@@ -4,10 +4,14 @@ import { cn } from "@/lib/cn";
 export function Logo({
   size = "md",
   withWordmark = true,
+  name = "Comandas",
+  logoUrl,
   className,
 }: {
   size?: "sm" | "md" | "lg";
   withWordmark?: boolean;
+  name?: string;
+  logoUrl?: string | null;
   className?: string;
 }) {
   const badgeSize = { sm: "h-7 w-7", md: "h-9 w-9", lg: "h-14 w-14" }[size];
@@ -16,17 +20,27 @@ export function Logo({
 
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <div
-        className={cn(
-          "flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm shadow-brand-900/20",
-          badgeSize
-        )}
-      >
-        <UtensilsCrossed className={iconSize} strokeWidth={2.25} />
-      </div>
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt={name}
+          className={cn("shrink-0 rounded-xl object-cover", badgeSize)}
+        />
+      ) : (
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm shadow-brand-900/20",
+            badgeSize
+          )}
+        >
+          <UtensilsCrossed className={iconSize} strokeWidth={2.25} />
+        </div>
+      )}
       {withWordmark && (
-        <span className={cn("font-bold tracking-tight text-stone-900", textSize)}>
-          Comandas<span className="text-brand-600">.</span>
+        <span className={cn("font-bold tracking-tight text-stone-900 truncate", textSize)}>
+          {name}
+          <span className="text-brand-600">.</span>
         </span>
       )}
     </div>

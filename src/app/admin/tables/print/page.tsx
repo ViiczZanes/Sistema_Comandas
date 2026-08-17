@@ -1,20 +1,20 @@
-import { QrCode } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { qrCodeDataUrl, tableUrl } from "@/lib/qrcode";
+import { tableUrl } from "@/lib/qrcode";
+import { getSettings } from "@/lib/settings";
+import { isQrDotStyle } from "@/lib/qrStyle";
 import { PrintButton } from "@/components/PrintButton";
-import { Logo } from "@/components/Logo";
+import { PrintTablesGrid } from "./PrintTablesGrid";
 
 export default async function PrintTablesPage() {
-  const tables = await prisma.restaurantTable.findMany({
-    orderBy: { number: "asc" },
-  });
+  const [tables, settings] = await Promise.all([
+    prisma.restaurantTable.findMany({ orderBy: { number: "asc" } }),
+    getSettings(),
+  ]);
 
-  const cards = await Promise.all(
-    tables.map(async (table) => ({
-      number: table.number,
-      qr: await qrCodeDataUrl(tableUrl(table.qrToken)),
-    }))
-  );
+  const cards = tables.map((table) => ({
+    number: table.number,
+    url: tableUrl(table.qrToken),
+  }));
 
   return (
     <div className="space-y-4">
@@ -30,30 +30,17 @@ export default async function PrintTablesPage() {
         <PrintButton />
       </div>
 
-      <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 print:grid-cols-3">
-        {cards.map((card) => (
-          <div
-            key={card.number}
-            className="flex flex-col items-center gap-3 rounded-2xl border border-stone-200 p-6 text-center break-inside-avoid print:rounded-none print:border-black"
-          >
-            <Logo size="sm" withWordmark={false} className="print:hidden" />
-            <p className="text-lg font-bold tracking-wide text-stone-900">
-              MESA {String(card.number).padStart(2, "0")}
-            </p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={card.qr}
-              alt={`QR Code da mesa ${card.number}`}
-              width={200}
-              height={200}
-            />
-            <p className="flex items-center gap-1.5 text-xs text-stone-500">
-              <QrCode className="h-3.5 w-3.5 print:hidden" />
-              Escaneie para acessar o cardápio
-            </p>
-          </div>
-        ))}
-      </div>
+      <PrintTablesGrid
+        cards={cards}
+        restaurantName={settings.restaurantName}
+        logoUrl={settings.logoUrl}
+        qrStyle={{
+          color: settings.brandColorHex,
+          dotStyle: isQrDotStyle(settings.qrDotStyle) ? settings.qrDotStyle : "square",
+          logoUrl: settings.logoUrl,
+          useLogo: settings.qrLogoInCenter,
+        }}
+      />
     </div>
   );
 }
