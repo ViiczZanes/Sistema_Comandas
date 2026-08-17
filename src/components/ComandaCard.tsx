@@ -64,10 +64,14 @@ export function ComandaCard({
   comanda,
   otherTables,
   isAdmin,
+  serviceFeeEnabled = false,
+  serviceFeePercent = 0,
 }: {
   comanda: ComandaDTO;
   otherTables: { id: string; number: number }[];
   isAdmin: boolean;
+  serviceFeeEnabled?: boolean;
+  serviceFeePercent?: number;
 }) {
   const router = useRouter();
   const [panel, setPanel] = useState<"none" | "pay" | "transfer">("none");
@@ -80,6 +84,11 @@ export function ComandaCard({
   const [amount, setAmount] = useState(() => (balanceCents / 100).toFixed(2));
 
   const canPay = comanda.status !== "CLOSED";
+
+  const amountCentsInput = Math.round((Number(amount) || 0) * 100);
+  const feePreviewCents = serviceFeeEnabled
+    ? Math.round((amountCentsInput * serviceFeePercent) / 100)
+    : 0;
 
   function closePanel() {
     setPanel("none");
@@ -101,10 +110,13 @@ export function ComandaCard({
         toast.error(data?.error ?? "Não foi possível registrar o pagamento.");
         return;
       }
+      const data = await res.json();
+      const feeCharged: number = data?.payment?.serviceFeeCents ?? 0;
+      const feeSuffix = feeCharged > 0 ? ` (+ ${formatCents(feeCharged)} de taxa)` : "";
       toast.success(
         amountCents >= balanceCents
-          ? `Comanda #${comanda.number} fechada.`
-          : "Pagamento registrado."
+          ? `Comanda #${comanda.number} fechada.${feeSuffix}`
+          : `Pagamento registrado.${feeSuffix}`
       );
       closePanel();
     } finally {
@@ -313,6 +325,15 @@ export function ComandaCard({
               Confirmar
             </Button>
           </div>
+          {serviceFeeEnabled && (
+            <p className="text-sm text-stone-500">
+              + Taxa de serviço ({serviceFeePercent}%): {formatCents(feePreviewCents)}
+              {" · "}
+              <span className="font-semibold text-stone-700">
+                cobrar {formatCents(amountCentsInput + feePreviewCents)} no total
+              </span>
+            </p>
+          )}
         </div>
       )}
 

@@ -18,6 +18,8 @@ type SettingsDTO = {
   brandColorHex: string;
   qrDotStyle: string;
   qrLogoInCenter: boolean;
+  serviceFeeEnabled: boolean;
+  serviceFeePercent: number;
 };
 
 export function SettingsManager({
@@ -34,6 +36,8 @@ export function SettingsManager({
     brandColorHex: settings.brandColorHex,
     qrDotStyle: (settings.qrDotStyle as QrDotStyle) || "square",
     qrLogoInCenter: settings.qrLogoInCenter,
+    serviceFeeEnabled: settings.serviceFeeEnabled,
+    serviceFeePercent: settings.serviceFeePercent,
   });
   const [saving, setSaving] = useState(false);
 
@@ -53,6 +57,10 @@ export function SettingsManager({
       toast.error("Cor inválida — use o formato #rrggbb.");
       return;
     }
+    if (form.serviceFeePercent < 0 || form.serviceFeePercent > 100) {
+      toast.error("A taxa de serviço precisa estar entre 0 e 100%.");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/settings", {
@@ -64,6 +72,8 @@ export function SettingsManager({
           brandColorHex: form.brandColorHex,
           qrDotStyle: form.qrDotStyle,
           qrLogoInCenter: form.qrLogoInCenter,
+          serviceFeeEnabled: form.serviceFeeEnabled,
+          serviceFeePercent: form.serviceFeePercent,
         }),
       });
       const data = await res.json();
@@ -158,6 +168,45 @@ export function SettingsManager({
               {!form.logoUrl.trim() && " (defina um logo primeiro)"}
             </span>
           </label>
+
+          <Field label="Taxa de serviço">
+            <div className="space-y-2.5">
+              <label className="flex items-center gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.serviceFeeEnabled}
+                  onChange={(e) =>
+                    setForm({ ...form, serviceFeeEnabled: e.target.checked })
+                  }
+                  className="h-4 w-4 accent-brand-600"
+                />
+                <span className="text-stone-700">
+                  Cobrar taxa de serviço no fechamento
+                </span>
+              </label>
+              {form.serviceFeeEnabled && (
+                <div className="flex items-center gap-2 pl-7">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={form.serviceFeePercent}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        serviceFeePercent: Number(e.target.value),
+                      })
+                    }
+                    className="w-20"
+                  />
+                  <span className="text-sm text-stone-500">
+                    % somado ao total na hora de fechar a comanda no PDV — não
+                    aparece na conta que o cliente vê antes disso.
+                  </span>
+                </div>
+              )}
+            </div>
+          </Field>
 
           <Button type="submit" loading={saving} icon={<Save />}>
             Salvar configurações

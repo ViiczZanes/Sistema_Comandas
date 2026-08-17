@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Ticket } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { getSettings } from "@/lib/settings";
 import { TABLE_STATUS_LABEL } from "@/lib/statusLabels";
 import { ComandaCard } from "@/components/ComandaCard";
 import { PdvAutoRefresh } from "@/components/PdvAutoRefresh";
@@ -27,7 +28,7 @@ export default async function TableDetailPage({
   const table = await prisma.restaurantTable.findUnique({ where: { id } });
   if (!table) notFound();
 
-  const [comandasBase, otherTables, user] = await Promise.all([
+  const [comandasBase, otherTables, user, settings] = await Promise.all([
     prisma.comanda.findMany({
       where: { currentTableId: table.id },
       orderBy: { number: "asc" },
@@ -37,6 +38,7 @@ export default async function TableDetailPage({
       orderBy: { number: "asc" },
     }),
     getCurrentUser(),
+    getSettings(),
   ]);
 
   const comandas = await Promise.all(comandasBase.map(attachCurrentRound));
@@ -77,6 +79,8 @@ export default async function TableDetailPage({
               comanda={comanda}
               otherTables={otherTables}
               isAdmin={user?.role === "ADMIN"}
+              serviceFeeEnabled={settings.serviceFeeEnabled}
+              serviceFeePercent={settings.serviceFeePercent}
             />
           ))}
         </div>

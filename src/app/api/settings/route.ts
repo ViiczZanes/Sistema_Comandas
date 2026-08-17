@@ -14,6 +14,8 @@ const bodySchema = z.object({
     .optional(),
   qrDotStyle: z.string().refine(isQrDotStyle, "Estilo de QR inválido").optional(),
   qrLogoInCenter: z.boolean().optional(),
+  serviceFeeEnabled: z.boolean().optional(),
+  serviceFeePercent: z.number().int().min(0).max(100).optional(),
 });
 
 export async function PATCH(request: Request) {

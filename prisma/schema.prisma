@@ -36,6 +36,12 @@ model Settings {
   qrDotStyle     String  @default("square") // square | dots | rounded | classy
   qrLogoInCenter Boolean @default(false)
 
+  // Taxa de serviço (os "10%" costumeiros) — desligada até o dono ativar.
+  // Só afeta o fechamento no PDV; a conta que o cliente vê nunca soma isso
+  // (decisão consciente, pra não criar ambiguidade sobre o que ele deve).
+  serviceFeeEnabled Boolean @default(false)
+  serviceFeePercent Int     @default(10)
+
   updatedAt DateTime @updatedAt
 
   @@map("settings")
@@ -297,6 +303,10 @@ model Payment {
   comandaId   String
   method      PaymentMethod
   amountCents Int
+  // Parte do valor cobrado que é taxa de serviço, não consumo — registrada
+  // só pra relatório/auditoria. Nunca entra na conta de saldo da comanda
+  // (`amountCents` continua sendo só o que quita o consumo em si).
+  serviceFeeCents Int @default(0)
   registeredById String?
   paidAt      DateTime      @default(now())
   // Marca o pagamento que quitou o saldo e fechou a comanda (para relatórios

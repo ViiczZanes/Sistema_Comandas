@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 import { recomputeTableStatus } from "@/lib/tableStatus";
 import { publish } from "@/lib/events";
+import { getSettings } from "@/lib/settings";
 
 const bodySchema = z.object({
   comandaId: z.string().min(1),
@@ -21,6 +22,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
   const { comandaId, method, amountCents } = parsed.data;
+
+  // Taxa de serviço: calculada aqui (não confiamos no cliente pra mandar o
+  // valor) a partir da configuração atual, proporcional ao valor sendo
+  // registrado agora. Só entra no registro do pagamento — nunca no saldo
+  // da comanda (ver comentário no schema, campo Payment.serviceFeeCents).
+  const settings = await getSettings();
+  const serviceFeeCents = settings.serviceFeeEnabled
+    ? Math.round((amountCents * settings.serviceFeePercent) / 100)
+    : 0;
 
   const result = await prisma.$transaction(async (tx) => {
     const comanda = await tx.comanda.findUnique({ where: { id: comandaId } });
@@ -57,6 +67,7 @@ export async function POST(request: Request) {
         comandaId,
         method,
         amountCents,
+        serviceFeeCents,
         registeredById: user.id,
         closesComanda,
       },

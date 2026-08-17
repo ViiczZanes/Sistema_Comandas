@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Receipt } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { getSettings } from "@/lib/settings";
 import { PdvAutoRefresh } from "@/components/PdvAutoRefresh";
 import { ComandaCard } from "@/components/ComandaCard";
 import { attachCurrentRound } from "@/lib/comandaRound";
@@ -25,10 +26,11 @@ export default async function ComandaCashierPage({
   });
   if (!comandaBase) notFound();
 
-  const [comanda, otherTables, user] = await Promise.all([
+  const [comanda, otherTables, user, settings] = await Promise.all([
     attachCurrentRound(comandaBase),
     prisma.restaurantTable.findMany({ orderBy: { number: "asc" } }),
     getCurrentUser(),
+    getSettings(),
   ]);
 
   return (
@@ -69,6 +71,8 @@ export default async function ComandaCashierPage({
         comanda={comanda}
         otherTables={otherTables}
         isAdmin={user?.role === "ADMIN"}
+        serviceFeeEnabled={settings.serviceFeeEnabled}
+        serviceFeePercent={settings.serviceFeePercent}
       />
     </div>
   );
