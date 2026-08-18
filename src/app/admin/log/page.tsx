@@ -5,6 +5,7 @@ import {
   Unlock,
   UserCog,
   Settings as SettingsIcon,
+  Tag,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { AdminPageHeader } from "@/components/AdminPageHeader";
@@ -20,6 +21,9 @@ const ACTION_META: Record<string, { icon: typeof XCircle; tone: string }> = {
   "user.create": { icon: UserCog, tone: "bg-brand-100 text-brand-700" },
   "user.update": { icon: UserCog, tone: "bg-brand-100 text-brand-700" },
   "settings.update": { icon: SettingsIcon, tone: "bg-stone-200 text-stone-600" },
+  "coupon.create": { icon: Tag, tone: "bg-emerald-100 text-emerald-700" },
+  "coupon.update": { icon: Tag, tone: "bg-emerald-100 text-emerald-700" },
+  "coupon.delete": { icon: Tag, tone: "bg-red-100 text-red-600" },
 };
 
 function formatWhen(date: Date): string {

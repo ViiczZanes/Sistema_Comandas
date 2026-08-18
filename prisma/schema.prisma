@@ -254,6 +254,11 @@ model Order {
   comandaId   String?
   status      OrderStatus  @default(NEW)
   totalCents  Int          @default(0)
+  // Desconto de cupom já embutido em totalCents — guardado à parte só pra
+  // exibir/auditar quanto foi abatido. couponCode é um snapshot (o cupom
+  // pode ser desativado depois sem apagar o histórico de quem usou).
+  discountCents Int     @default(0)
+  couponCode    String?
   note        String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -407,13 +412,23 @@ model KioskCheckout {
   // Itens do carrinho serializados (JSON) — vira o Order só depois de
   // aprovado, então não tem FK pra produto/opção aqui.
   cartJson    String
+  // Subtotal dos itens, sem desconto — amountCents (o que é cobrado de
+  // verdade) já vem com o cupom aplicado.
+  subtotalCents Int @default(0)
   amountCents Int
+
+  // Só PIX/CREDIT/DEBIT fazem sentido no totem (sem gaveta de dinheiro).
+  method PaymentMethod @default(PIX)
 
   status   String @default("pending") // pending | approved | declined | expired
   provider String @default("mock")
   // Id externo do gateway (pra correlacionar webhook, no futuro com um
   // provider de verdade) — o mock não usa.
   providerRef String?
+
+  couponId      String?
+  coupon        Coupon? @relation(fields: [couponId], references: [id])
+  discountCents Int     @default(0)
 
   orderId String? @unique
   order   Order?  @relation(fields: [orderId], references: [id])
@@ -422,4 +437,33 @@ model KioskCheckout {
   updatedAt DateTime @updatedAt
 
   @@map("kiosk_checkouts")
+}
+
+enum CouponType {
+  PERCENT // desconto em % do subtotal
+  FIXED   // desconto em centavos, fixo
+}
+
+// Cupom de desconto — hoje só aplicável no totem (ver
+// POST /api/totem/coupon/validate). `usedCount` só incrementa quando o
+// pedido é confirmado de verdade (pagamento aprovado), não na hora de
+// digitar o código, pra não esgotar o limite de uso com carrinho abandonado.
+model Coupon {
+  id     String     @id @default(cuid())
+  code   String     @unique
+  type   CouponType
+  // PERCENT: 1–100. FIXED: centavos.
+  value  Int
+  active Boolean    @default(true)
+
+  maxUses   Int? // null = sem limite
+  usedCount Int  @default(0)
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checkouts KioskCheckout[]
+
+  @@map("coupons")
 }

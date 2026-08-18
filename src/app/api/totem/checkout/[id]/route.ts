@@ -53,6 +53,9 @@ export async function GET(
 
   // approved — cria o pedido + pagamento numa transação só.
   const items = JSON.parse(checkout.cartJson) as PricedItem[];
+  const coupon = checkout.couponId
+    ? await prisma.coupon.findUnique({ where: { id: checkout.couponId } })
+    : null;
 
   const result = await prisma.$transaction(async (tx) => {
     const number = await nextOrderNumber(tx);
@@ -61,6 +64,8 @@ export async function GET(
         number,
         channel: "KIOSK",
         totalCents: checkout.amountCents,
+        discountCents: checkout.discountCents,
+        couponCode: coupon?.code ?? null,
         items: {
           create: items.map((item) => ({
             productId: item.productId,
@@ -85,10 +90,17 @@ export async function GET(
     await tx.payment.create({
       data: {
         orderId: order.id,
-        method: "PIX",
+        method: checkout.method,
         amountCents: checkout.amountCents,
       },
     });
+
+    if (checkout.couponId) {
+      await tx.coupon.update({
+        where: { id: checkout.couponId },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
 
     await tx.kioskCheckout.update({
       where: { id },

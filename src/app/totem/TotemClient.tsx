@@ -12,6 +12,9 @@ import {
   UtensilsCrossed,
   Ban,
   QrCode,
+  CreditCard,
+  Smartphone,
+  Tag,
   PartyPopper,
   AlertCircle,
   ChevronLeft,
@@ -19,8 +22,17 @@ import {
 import { formatCents } from "@/lib/money";
 import { randomId } from "@/lib/id";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Logo } from "@/components/Logo";
 import { cn } from "@/lib/cn";
+
+type PaymentMethod = "PIX" | "CREDIT" | "DEBIT";
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Smartphone }[] = [
+  { value: "PIX", label: "PIX", icon: Smartphone },
+  { value: "CREDIT", label: "Cartão de crédito", icon: CreditCard },
+  { value: "DEBIT", label: "Cartão de débito", icon: CreditCard },
+];
 
 type OptionDTO = {
   id: string;
@@ -56,7 +68,7 @@ type CartLine = {
   observation?: string;
 };
 
-type Screen = "idle" | "order" | "cart" | "paying" | "done" | "error";
+type Screen = "idle" | "order" | "cart" | "method" | "paying" | "done" | "error";
 
 const IDLE_RESET_MS = 45_000; // volta pra tela ociosa se ninguém mexer
 
@@ -77,12 +89,50 @@ export function TotemClient({
   const [checkout, setCheckout] = useState<{
     checkoutId: string;
     amountCents: number;
+    method: PaymentMethod;
     qrCodeBase64?: string;
   } | null>(null);
   const [orderNumber, setOrderNumber] = useState<number | null>(null);
 
-  const total = cart.reduce((a, l) => a + l.unitPriceCents * l.quantity, 0);
+  const [couponInput, setCouponInput] = useState("");
+  const [coupon, setCoupon] = useState<{ code: string; discountCents: number } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+
+  const subtotal = cart.reduce((a, l) => a + l.unitPriceCents * l.quantity, 0);
+  const discountCents = coupon ? Math.min(coupon.discountCents, subtotal) : 0;
+  const total = Math.max(subtotal - discountCents, 0);
   const itemCount = cart.reduce((a, l) => a + l.quantity, 0);
+
+  async function applyCoupon() {
+    if (!couponInput.trim()) return;
+    setApplyingCoupon(true);
+    setCouponError(null);
+    try {
+      const res = await fetch("/api/totem/coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput.trim(), subtotalCents: subtotal }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCouponError(data.error ?? "Cupom inválido.");
+        setCoupon(null);
+        return;
+      }
+      setCoupon({ code: data.code, discountCents: data.discountCents });
+      setCouponInput("");
+    } catch {
+      setCouponError("Sem conexão com o sistema.");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  }
+
+  function removeCoupon() {
+    setCoupon(null);
+    setCouponError(null);
+  }
 
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function bumpIdleTimer() {
@@ -105,6 +155,9 @@ export function TotemClient({
     setErrorMessage(null);
     setCheckout(null);
     setOrderNumber(null);
+    setCoupon(null);
+    setCouponInput("");
+    setCouponError(null);
   }
 
   function addToCart(line: Omit<CartLine, "key">) {
@@ -124,7 +177,7 @@ export function TotemClient({
     );
   }
 
-  async function startPayment() {
+  async function startPayment(method: PaymentMethod) {
     setScreen("paying");
     setErrorMessage(null);
     try {
@@ -132,6 +185,8 @@ export function TotemClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          method,
+          couponCode: coupon?.code,
           items: cart.map((l) => ({
             productId: l.productId,
             quantity: l.quantity,
@@ -237,35 +292,83 @@ export function TotemClient({
   }
 
   if (screen === "paying") {
+    const isPix = checkout?.method === "PIX";
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-900 px-6 text-center text-white">
-        <QrCode className="h-12 w-12 text-emerald-400" />
-        {checkout?.qrCodeBase64 ? (
-          <div className="rounded-2xl bg-white p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`data:image/png;base64,${checkout.qrCodeBase64}`}
-              alt="QR Code de pagamento PIX"
-              className="h-48 w-48"
-            />
-          </div>
+        {isPix ? (
+          <>
+            <QrCode className="h-12 w-12 text-emerald-400" />
+            {checkout?.qrCodeBase64 ? (
+              <div className="rounded-2xl bg-white p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`data:image/png;base64,${checkout.qrCodeBase64}`}
+                  alt="QR Code de pagamento PIX"
+                  className="h-48 w-48"
+                />
+              </div>
+            ) : (
+              <div className="flex h-48 w-48 items-center justify-center rounded-2xl bg-stone-800">
+                <span className="h-8 w-8 animate-spin rounded-full border-4 border-stone-600 border-t-white" />
+              </div>
+            )}
+            <div>
+              <p className="text-2xl font-bold">Escaneie e pague pelo PIX</p>
+              <p className="mt-1 text-stone-400">
+                Total: {formatCents(checkout?.amountCents ?? total)}
+              </p>
+            </div>
+          </>
         ) : (
-          <div className="flex h-48 w-48 items-center justify-center rounded-2xl bg-stone-800">
-            <span className="h-8 w-8 animate-spin rounded-full border-4 border-stone-600 border-t-white" />
-          </div>
+          <>
+            <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-stone-800">
+              <CreditCard className="h-10 w-10 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">
+                Insira ou aproxime o cartão de {checkout?.method === "CREDIT" ? "crédito" : "débito"}
+              </p>
+              <p className="mt-1 text-stone-400">
+                Total: {formatCents(checkout?.amountCents ?? total)}
+              </p>
+            </div>
+          </>
         )}
-        <div>
-          <p className="text-2xl font-bold">Escaneie e pague pelo PIX</p>
-          <p className="mt-1 text-stone-400">
-            Total: {formatCents(checkout?.amountCents ?? total)}
-          </p>
-        </div>
         <p className="text-sm text-stone-500">Aguardando confirmação do pagamento...</p>
         <button
           onClick={() => setScreen("cart")}
           className="text-sm font-medium text-stone-400 underline underline-offset-4"
         >
           Cancelar e voltar
+        </button>
+      </main>
+    );
+  }
+
+  if (screen === "method") {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-50 px-6 text-center">
+        <div>
+          <h1 className="text-2xl font-bold text-stone-900">Como você quer pagar?</h1>
+          <p className="mt-1 text-stone-500">Total: {formatCents(total)}</p>
+        </div>
+        <div className="flex w-full max-w-sm flex-col gap-3">
+          {PAYMENT_METHODS.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => startPayment(m.value)}
+              className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-left text-lg font-semibold text-stone-900 shadow-sm hover:border-brand-300 hover:bg-brand-50"
+            >
+              <m.icon className="h-6 w-6 text-brand-600" />
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setScreen("cart")}
+          className="text-sm font-medium text-stone-400 underline underline-offset-4"
+        >
+          Voltar ao carrinho
         </button>
       </main>
     );
@@ -397,11 +500,61 @@ export function TotemClient({
           </div>
 
           <div className="border-t border-stone-200 bg-white px-6 py-5">
+            {coupon ? (
+              <div className="mb-3 flex items-center justify-between rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm">
+                <span className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                  <Tag className="h-4 w-4" />
+                  Cupom {coupon.code} aplicado
+                </span>
+                <button onClick={removeCoupon} className="font-medium text-emerald-700 underline">
+                  remover
+                </button>
+              </div>
+            ) : (
+              <div className="mb-3">
+                <div className="flex gap-2">
+                  <Input
+                    icon={<Tag />}
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    placeholder="Tenho um cupom"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="secondary"
+                    loading={applyingCoupon}
+                    disabled={!couponInput.trim()}
+                    onClick={applyCoupon}
+                  >
+                    Aplicar
+                  </Button>
+                </div>
+                {couponError && <p className="mt-1.5 text-sm text-red-600">{couponError}</p>}
+              </div>
+            )}
+
+            {discountCents > 0 && (
+              <div className="mb-1 flex items-center justify-between text-sm text-stone-500">
+                <span>Subtotal</span>
+                <span>{formatCents(subtotal)}</span>
+              </div>
+            )}
+            {discountCents > 0 && (
+              <div className="mb-1 flex items-center justify-between text-sm text-emerald-700">
+                <span>Desconto</span>
+                <span>− {formatCents(discountCents)}</span>
+              </div>
+            )}
             <div className="mb-3 flex items-center justify-between text-xl font-bold text-stone-900">
               <span>Total</span>
               <span>{formatCents(total)}</span>
             </div>
-            <Button size="lg" className="w-full" disabled={cart.length === 0} onClick={startPayment}>
+            <Button
+              size="lg"
+              className="w-full"
+              disabled={cart.length === 0}
+              onClick={() => setScreen("method")}
+            >
               Pagar {formatCents(total)}
             </Button>
           </div>
