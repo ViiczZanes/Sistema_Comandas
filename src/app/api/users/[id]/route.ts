@@ -3,6 +3,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 import { hashPassword } from "@/lib/auth";
+import { logAction } from "@/lib/auditLog";
+
+const ROLE_LABEL = {
+  ADMIN: "Administrador",
+  WAITER: "PDV / Caixa",
+  KITCHEN: "Cozinha",
+} as const;
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -32,6 +39,14 @@ export async function PATCH(
     );
   }
 
+  const before = await prisma.user.findUnique({ where: { id } });
+  if (!before) {
+    return NextResponse.json(
+      { error: "Usuário não encontrado." },
+      { status: 404 }
+    );
+  }
+
   const { password, ...rest } = parsed.data;
   const data: Record<string, unknown> = { ...rest };
   if (password) {
@@ -51,6 +66,26 @@ export async function PATCH(
       { error: "Usuário não encontrado." },
       { status: 404 }
     );
+  }
+
+  const changes: string[] = [];
+  if (parsed.data.role !== undefined && parsed.data.role !== before.role) {
+    changes.push(`papel ${ROLE_LABEL[before.role]} → ${ROLE_LABEL[updated.role]}`);
+  }
+  if (parsed.data.active !== undefined && parsed.data.active !== before.active) {
+    changes.push(updated.active ? "reativado" : "desativado");
+  }
+  if (password) {
+    changes.push("senha redefinida");
+  }
+  if (changes.length > 0) {
+    logAction({
+      userId: currentUser.id,
+      action: "user.update",
+      entityType: "User",
+      entityId: updated.id,
+      summary: `Editou o usuário "${updated.name}" (${changes.join(", ")})`,
+    });
   }
 
   return NextResponse.json(updated);

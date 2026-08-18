@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 import { publish } from "@/lib/events";
+import { logAction } from "@/lib/auditLog";
 
 const ORDER: Record<string, number> = {
   NEW: 0,
@@ -28,7 +29,7 @@ export async function PATCH(
   request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
   if (error) return error;
 
   const { id } = await ctx.params;
@@ -38,7 +39,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const order = await prisma.order.findUnique({ where: { id } });
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      table: { select: { number: true } },
+      comanda: { select: { number: true } },
+    },
+  });
   if (!order) {
     return NextResponse.json(
       { error: "Pedido não encontrado." },
@@ -72,6 +79,16 @@ export async function PATCH(
 
   publish("kitchen", { type: "order-updated", orderId: updated.id });
   publish("pdv", { type: "order-updated", orderId: updated.id });
+
+  if (parsed.data.status === "CANCELLED") {
+    logAction({
+      userId: user.id,
+      action: "order.cancel",
+      entityType: "Order",
+      entityId: order.id,
+      summary: `Cancelou o pedido #${order.number} (Mesa ${order.table.number} · Comanda ${order.comanda.number})`,
+    });
+  }
 
   return NextResponse.json(updated);
 }

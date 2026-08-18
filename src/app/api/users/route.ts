@@ -3,6 +3,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 import { hashPassword } from "@/lib/auth";
+import { logAction } from "@/lib/auditLog";
+
+const ROLE_LABEL = {
+  ADMIN: "Administrador",
+  WAITER: "PDV / Caixa",
+  KITCHEN: "Cozinha",
+} as const;
 
 export async function GET() {
   const { error } = await requireApiUser(["ADMIN"]);
@@ -30,7 +37,7 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user: currentUser, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const json = await request.json().catch(() => null);
@@ -58,6 +65,14 @@ export async function POST(request: Request) {
       passwordHash,
     },
     select: { id: true, name: true, email: true, role: true, active: true },
+  });
+
+  logAction({
+    userId: currentUser.id,
+    action: "user.create",
+    entityType: "User",
+    entityId: user.id,
+    summary: `Criou o usuário "${user.name}" (${ROLE_LABEL[user.role]})`,
   });
 
   return NextResponse.json(user, { status: 201 });

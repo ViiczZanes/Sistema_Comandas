@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
+import { logAction } from "@/lib/auditLog";
+import { formatCents } from "@/lib/money";
 
 export async function GET() {
   const { error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
@@ -24,7 +26,7 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const json = await request.json().catch(() => null);
@@ -34,5 +36,14 @@ export async function POST(request: Request) {
   }
 
   const product = await prisma.product.create({ data: parsed.data });
+
+  logAction({
+    userId: user.id,
+    action: "product.create",
+    entityType: "Product",
+    entityId: product.id,
+    summary: `Criou o produto "${product.name}" (${formatCents(product.priceCents)})`,
+  });
+
   return NextResponse.json(product, { status: 201 });
 }

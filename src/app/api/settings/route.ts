@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 import { isQrDotStyle } from "@/lib/qrStyle";
+import { logAction } from "@/lib/auditLog";
+import { getSettings } from "@/lib/settings";
 
 const bodySchema = z.object({
   restaurantName: z.string().trim().min(1).max(60).optional(),
@@ -19,7 +21,7 @@ const bodySchema = z.object({
 });
 
 export async function PATCH(request: Request) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const json = await request.json().catch(() => null);
@@ -34,11 +36,38 @@ export async function PATCH(request: Request) {
   const data = { ...parsed.data };
   if (data.logoUrl === "") data.logoUrl = null;
 
+  const before = await getSettings();
+
   const settings = await prisma.settings.upsert({
     where: { id: "singleton" },
     update: data,
     create: { id: "singleton", ...data },
   });
+
+  // Taxa de serviço mexe direto com dinheiro cobrado do cliente — vale um
+  // log específico. O resto (nome, logo, cor, estilo do QR) é só aparência,
+  // registrado de forma genérica.
+  const changes: string[] = [];
+  if (data.serviceFeeEnabled !== undefined && data.serviceFeeEnabled !== before.serviceFeeEnabled) {
+    changes.push(settings.serviceFeeEnabled ? "taxa de serviço ativada" : "taxa de serviço desativada");
+  }
+  if (
+    data.serviceFeePercent !== undefined &&
+    data.serviceFeePercent !== before.serviceFeePercent
+  ) {
+    changes.push(`percentual da taxa ${before.serviceFeePercent}% → ${settings.serviceFeePercent}%`);
+  }
+  const otherFieldsChanged = (["restaurantName", "logoUrl", "brandColorHex", "qrDotStyle", "qrLogoInCenter"] as const)
+    .some((key) => data[key] !== undefined && data[key] !== before[key]);
+  if (otherFieldsChanged) changes.push("identidade visual");
+  if (changes.length > 0) {
+    logAction({
+      userId: user.id,
+      action: "settings.update",
+      entityType: "Settings",
+      summary: `Alterou Configurações (${changes.join(", ")})`,
+    });
+  }
 
   return NextResponse.json(settings);
 }

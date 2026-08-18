@@ -11,6 +11,7 @@ import {
   Ticket,
   Users,
   Palette,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -23,6 +24,7 @@ const ADMIN_LINKS = [
   { href: "/admin/comandas", label: "Comandas", icon: Ticket },
   { href: "/admin/users", label: "Usuários", icon: Users },
   { href: "/admin/settings", label: "Configurações", icon: Palette },
+  { href: "/admin/log", label: "Log de auditoria", icon: ScrollText },
 ];
 
 export function AdminSidebar() {
