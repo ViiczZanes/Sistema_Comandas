@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Image as ImageIcon } from "lucide-react";
+import Link from "next/link";
+import { Save, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select, Field } from "@/components/ui/Input";
@@ -20,6 +21,7 @@ type SettingsDTO = {
   qrLogoInCenter: boolean;
   serviceFeeEnabled: boolean;
   serviceFeePercent: number;
+  kioskEnabled: boolean;
 };
 
 export function SettingsManager({
@@ -38,6 +40,7 @@ export function SettingsManager({
     qrLogoInCenter: settings.qrLogoInCenter,
     serviceFeeEnabled: settings.serviceFeeEnabled,
     serviceFeePercent: settings.serviceFeePercent,
+    kioskEnabled: settings.kioskEnabled,
   });
   const [saving, setSaving] = useState(false);
 
@@ -74,6 +77,7 @@ export function SettingsManager({
           qrLogoInCenter: form.qrLogoInCenter,
           serviceFeeEnabled: form.serviceFeeEnabled,
           serviceFeePercent: form.serviceFeePercent,
+          kioskEnabled: form.kioskEnabled,
         }),
       });
       const data = await res.json();
@@ -203,6 +207,40 @@ export function SettingsManager({
                     % somado ao total na hora de fechar a comanda no PDV — não
                     aparece na conta que o cliente vê antes disso.
                   </span>
+                </div>
+              )}
+            </div>
+          </Field>
+
+          <Field label="Totem de autoatendimento">
+            <div className="space-y-2.5">
+              <label className="flex items-center gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.kioskEnabled}
+                  onChange={(e) => setForm({ ...form, kioskEnabled: e.target.checked })}
+                  className="h-4 w-4 accent-brand-600"
+                />
+                <span className="text-stone-700">
+                  Ativar totem — pedido e pagamento no balcão, com senha
+                </span>
+              </label>
+              {form.kioskEnabled && (
+                <div className="flex flex-wrap gap-3 pl-7 text-sm">
+                  <Link
+                    href="/totem"
+                    target="_blank"
+                    className="flex items-center gap-1 text-brand-600 hover:underline"
+                  >
+                    Abrir o totem <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                  <Link
+                    href="/totem/painel"
+                    target="_blank"
+                    className="flex items-center gap-1 text-brand-600 hover:underline"
+                  >
+                    Abrir painel de senhas <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
                 </div>
               )}
             </div>

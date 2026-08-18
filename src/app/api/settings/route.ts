@@ -18,6 +18,7 @@ const bodySchema = z.object({
   qrLogoInCenter: z.boolean().optional(),
   serviceFeeEnabled: z.boolean().optional(),
   serviceFeePercent: z.number().int().min(0).max(100).optional(),
+  kioskEnabled: z.boolean().optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -60,6 +61,9 @@ export async function PATCH(request: Request) {
   const otherFieldsChanged = (["restaurantName", "logoUrl", "brandColorHex", "qrDotStyle", "qrLogoInCenter"] as const)
     .some((key) => data[key] !== undefined && data[key] !== before[key]);
   if (otherFieldsChanged) changes.push("identidade visual");
+  if (data.kioskEnabled !== undefined && data.kioskEnabled !== before.kioskEnabled) {
+    changes.push(settings.kioskEnabled ? "totem ativado" : "totem desativado");
+  }
   if (changes.length > 0) {
     logAction({
       userId: user.id,

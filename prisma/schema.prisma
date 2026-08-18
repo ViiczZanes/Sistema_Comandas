@@ -42,6 +42,9 @@ model Settings {
   serviceFeeEnabled Boolean @default(false)
   serviceFeePercent Int     @default(10)
 
+  // Totem de autoatendimento (balcão) — desligado até o dono ativar.
+  kioskEnabled Boolean @default(false)
+
   updatedAt DateTime @updatedAt
 
   @@map("settings")
@@ -230,24 +233,36 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum OrderChannel {
+  DINE_IN // mesa + comanda, fluxo original
+  KIOSK   // totem de autoatendimento, retirada no balcão
+}
+
 model Order {
-  id          String      @id @default(cuid())
+  id          String       @id @default(cuid())
   // Número sequencial de exibição (#1042). Gerado pela aplicação a partir
   // do model Counter, dentro de uma transação — não usamos autoincrement()
   // do banco porque SQLite só permite isso na chave primária, e queremos
-  // o mesmo comportamento em PostgreSQL.
-  number      Int         @unique
-  tableId     String
-  comandaId   String
-  status      OrderStatus @default(NEW)
-  totalCents  Int         @default(0)
+  // o mesmo comportamento em PostgreSQL. Pedido de totem usa a MESMA
+  // sequência — o número também funciona como a senha de retirada.
+  number      Int          @unique
+  channel     OrderChannel @default(DINE_IN)
+  // Obrigatórios só quando channel = DINE_IN (pedido de totem não tem
+  // mesa nem comanda física — ver KioskCheckout). Validado na aplicação,
+  // não no banco.
+  tableId     String?
+  comandaId   String?
+  status      OrderStatus  @default(NEW)
+  totalCents  Int          @default(0)
   note        String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  table   RestaurantTable @relation(fields: [tableId], references: [id])
-  comanda Comanda         @relation(fields: [comandaId], references: [id])
+  table   RestaurantTable? @relation(fields: [tableId], references: [id])
+  comanda Comanda?         @relation(fields: [comandaId], references: [id])
   items   OrderItem[]
+  payments      Payment[]
+  kioskCheckout KioskCheckout?
 
   @@index([tableId])
   @@index([comandaId])
@@ -301,7 +316,10 @@ enum PaymentMethod {
 
 model Payment {
   id          String        @id @default(cuid())
-  comandaId   String
+  // Obrigatório só pra pagamento de comanda (fluxo de mesa). Pagamento de
+  // totem quita um Order avulso direto (orderId), sem comanda nenhuma.
+  comandaId   String?
+  orderId     String?
   method      PaymentMethod
   amountCents Int
   // Parte do valor cobrado que é taxa de serviço, não consumo — registrada
@@ -313,13 +331,15 @@ model Payment {
   // Marca o pagamento que quitou o saldo e fechou a comanda (para relatórios
   // de "comandas fechadas" — a comanda em si volta a ficar OPEN na hora,
   // pronta pra outro cliente, então seu status não serve mais como marcador
-  // histórico de fechamento).
+  // histórico de fechamento). Pagamento de totem nunca marca isso.
   closesComanda Boolean     @default(false)
 
-  comanda    Comanda @relation(fields: [comandaId], references: [id])
+  comanda    Comanda? @relation(fields: [comandaId], references: [id])
+  order      Order?   @relation(fields: [orderId], references: [id])
   registeredBy User? @relation("PaymentRegisteredBy", fields: [registeredById], references: [id])
 
   @@index([comandaId])
+  @@index([orderId])
   @@map("payments")
 }
 
@@ -371,4 +391,35 @@ model AuditLog {
   @@index([createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Checkout do totem — existe ANTES do Order nascer. O pedido só é criado
+// quando o pagamento é confirmado (a cozinha nunca vê pedido não pago).
+// Guardar isso à parte do carrinho no navegador é o que permite, mais pra
+// frente, um provider de pagamento real confirmar via webhook mesmo que o
+// cliente já tenha saído de perto do totem (PIX costuma ser pago no
+// celular da própria pessoa, não no aparelho do totem).
+// ---------------------------------------------------------------------------
+
+model KioskCheckout {
+  id          String @id @default(cuid())
+  // Itens do carrinho serializados (JSON) — vira o Order só depois de
+  // aprovado, então não tem FK pra produto/opção aqui.
+  cartJson    String
+  amountCents Int
+
+  status   String @default("pending") // pending | approved | declined | expired
+  provider String @default("mock")
+  // Id externo do gateway (pra correlacionar webhook, no futuro com um
+  // provider de verdade) — o mock não usa.
+  providerRef String?
+
+  orderId String? @unique
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("kiosk_checkouts")
 }

@@ -76,3 +76,16 @@ export function playHelpCallChime() {
   tone(audioCtx, 987.77, now + 0.18, 0.13);
   tone(audioCtx, 987.77, now + 0.36, 0.2);
 }
+
+/** "Senha pronta" no painel de chamada do balcão — soa de campainha (duas
+ * notas subindo), pra chamar atenção de quem está esperando na fila. */
+export function playReadyChime() {
+  const audioCtx = getContext();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume().catch(() => {});
+  }
+  const now = audioCtx.currentTime;
+  tone(audioCtx, 784, now, 0.18);
+  tone(audioCtx, 1046.5, now + 0.16, 0.28);
+}

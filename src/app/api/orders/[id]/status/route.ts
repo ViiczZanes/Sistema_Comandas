@@ -81,12 +81,16 @@ export async function PATCH(
   publish("pdv", { type: "order-updated", orderId: updated.id });
 
   if (parsed.data.status === "CANCELLED") {
+    const origin =
+      order.table && order.comanda
+        ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
+        : "Balcão";
     logAction({
       userId: user.id,
       action: "order.cancel",
       entityType: "Order",
       entityId: order.id,
-      summary: `Cancelou o pedido #${order.number} (Mesa ${order.table.number} · Comanda ${order.comanda.number})`,
+      summary: `Cancelou o pedido #${order.number} (${origin})`,
     });
   }
 

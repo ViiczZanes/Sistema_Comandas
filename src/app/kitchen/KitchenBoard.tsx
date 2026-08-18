@@ -41,8 +41,9 @@ type OrderDTO = {
   number: number;
   status: "NEW" | "ACCEPTED" | "PREPARING" | "READY" | "DELIVERED" | "CANCELLED";
   createdAt: string;
-  table: { number: number };
-  comanda: { number: number };
+  // Pedido de totem (balcão) não tem mesa/comanda — ver OrderChannel.
+  table: { number: number } | null;
+  comanda: { number: number } | null;
   items: OrderItemDTO[];
 };
 
@@ -279,8 +280,9 @@ export function KitchenBoard() {
                                 col.chip
                               )}
                             >
-                              Mesa {order.table.number} · Comanda{" "}
-                              {order.comanda.number}
+                              {order.table && order.comanda
+                                ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
+                                : "Balcão"}
                             </span>
                           </div>
                           <span
