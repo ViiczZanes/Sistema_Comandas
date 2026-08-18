@@ -45,7 +45,8 @@ export default async function ComandaBillPage({
     }),
   ]);
 
-  const totalCents = orders.reduce((a, o) => a + o.totalCents, 0);
+  const grossCents = orders.reduce((a, o) => a + o.totalCents, 0);
+  const totalCents = Math.max(grossCents - comanda.discountCents, 0);
   const paidCents = payments.reduce((a, p) => a + p.amountCents, 0);
   const balanceCents = Math.max(totalCents - paidCents, 0);
 
@@ -132,8 +133,14 @@ export default async function ComandaBillPage({
         <section className="space-y-1.5 border-t border-dashed border-stone-300 pt-4">
           <div className="flex justify-between text-sm text-stone-500">
             <span>Total consumido</span>
-            <span>{formatCents(totalCents)}</span>
+            <span>{formatCents(grossCents)}</span>
           </div>
+          {comanda.discountCents > 0 && (
+            <div className="flex justify-between text-sm text-emerald-700">
+              <span>Desconto ({comanda.couponCode})</span>
+              <span>− {formatCents(comanda.discountCents)}</span>
+            </div>
+          )}
           {paidCents > 0 && (
             <div className="flex justify-between text-sm text-stone-500">
               <span>Já pago</span>

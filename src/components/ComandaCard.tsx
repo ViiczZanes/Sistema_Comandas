@@ -10,6 +10,7 @@ import {
   Unlock,
   X,
   Check,
+  Tag,
 } from "lucide-react";
 import { formatCents } from "@/lib/money";
 import { Button } from "@/components/ui/Button";
@@ -51,6 +52,8 @@ type ComandaDTO = {
   status: "OPEN" | "AWAITING_PAYMENT" | "CLOSED";
   orders: OrderDTO[];
   payments: { id: string; method: PaymentMethod; amountCents: number }[];
+  couponCode: string | null;
+  discountCents: number;
 };
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Banknote }[] = [
@@ -78,10 +81,13 @@ export function ComandaCard({
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [loading, setLoading] = useState(false);
 
-  const totalCents = comanda.orders.reduce((a, o) => a + o.totalCents, 0);
+  const grossCents = comanda.orders.reduce((a, o) => a + o.totalCents, 0);
+  const totalCents = Math.max(grossCents - comanda.discountCents, 0);
   const paidCents = comanda.payments.reduce((a, p) => a + p.amountCents, 0);
   const balanceCents = Math.max(totalCents - paidCents, 0);
   const [amount, setAmount] = useState(() => (balanceCents / 100).toFixed(2));
+  const [couponInput, setCouponInput] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
 
   const canPay = comanda.status !== "CLOSED";
 
@@ -121,6 +127,44 @@ export function ComandaCard({
       closePanel();
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function applyCoupon() {
+    if (!couponInput.trim()) return;
+    setCouponLoading(true);
+    try {
+      const res = await fetch(`/api/comandas/${comanda.id}/coupon`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Não foi possível aplicar o cupom.");
+        return;
+      }
+      const newBalance = Math.max(grossCents - data.discountCents - paidCents, 0);
+      setAmount((newBalance / 100).toFixed(2));
+      setCouponInput("");
+      toast.success(`Cupom ${data.couponCode} aplicado.`);
+      router.refresh();
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  async function removeCoupon() {
+    setCouponLoading(true);
+    try {
+      const res = await fetch(`/api/comandas/${comanda.id}/coupon`, { method: "DELETE" });
+      if (res.ok) {
+        const newBalance = Math.max(grossCents - paidCents, 0);
+        setAmount((newBalance / 100).toFixed(2));
+        router.refresh();
+      }
+    } finally {
+      setCouponLoading(false);
     }
   }
 
@@ -200,7 +244,10 @@ export function ComandaCard({
         </div>
         <div className="text-right">
           <p className="text-xs text-stone-400">
-            Total {formatCents(totalCents)}
+            Total {formatCents(grossCents)}
+            {comanda.discountCents > 0
+              ? ` · Cupom ${comanda.couponCode} −${formatCents(comanda.discountCents)}`
+              : ""}
             {paidCents > 0 ? ` · Pago ${formatCents(paidCents)}` : ""}
           </p>
           <p
@@ -285,6 +332,45 @@ export function ComandaCard({
 
       {panel === "pay" && (
         <div className="animate-slide-up mt-4 space-y-3 rounded-2xl border border-stone-200 bg-stone-50/70 p-4">
+          <div>
+            <p className="mb-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+              Cupom de desconto
+            </p>
+            {comanda.couponCode ? (
+              <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm">
+                <span className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                  <Tag className="h-4 w-4" />
+                  {comanda.couponCode} aplicado (−{formatCents(comanda.discountCents)})
+                </span>
+                <button
+                  onClick={removeCoupon}
+                  disabled={couponLoading}
+                  className="font-medium text-emerald-700 underline"
+                >
+                  remover
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Input
+                  icon={<Tag />}
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Código do cupom"
+                  className="w-40"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={couponLoading}
+                  disabled={!couponInput.trim()}
+                  onClick={applyCoupon}
+                >
+                  Aplicar
+                </Button>
+              </div>
+            )}
+          </div>
           <div>
             <p className="mb-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
               Forma de pagamento

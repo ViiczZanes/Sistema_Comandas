@@ -138,6 +138,16 @@ model Comanda {
   currentTableId String?
   currentTable   RestaurantTable? @relation(fields: [currentTableId], references: [id])
 
+  // Cupom aplicado nesta rodada (desde o último `openedAt`) — o caixa digita
+  // no fechamento (ver ComandaCard). couponCode é um snapshot (mostrado pro
+  // cliente na conta). Zerado sempre que a comanda recicla (fecha e volta a
+  // ficar OPEN pra outro cliente), igual orders/payments são escopados por
+  // openedAt.
+  couponId      String?
+  coupon        Coupon? @relation(fields: [couponId], references: [id])
+  couponCode    String?
+  discountCents Int     @default(0)
+
   orders    Order[]
   payments  Payment[]
   helpCalls HelpCall[]
@@ -464,6 +474,7 @@ model Coupon {
   updatedAt DateTime @updatedAt
 
   checkouts KioskCheckout[]
+  comandas  Comanda[]
 
   @@map("coupons")
 }

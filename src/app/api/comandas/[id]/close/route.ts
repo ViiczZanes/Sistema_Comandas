@@ -40,13 +40,15 @@ export async function POST(
         select: { amountCents: true },
       }),
     ]);
-    const totalCents = orders.reduce((a, o) => a + o.totalCents, 0);
+    const grossCents = orders.reduce((a, o) => a + o.totalCents, 0);
     const paidCents = payments.reduce((a, p) => a + p.amountCents, 0);
-    balanceCents = Math.max(totalCents - paidCents, 0);
+    balanceCents = Math.max(grossCents - existing.discountCents - paidCents, 0);
 
     const previousTableId = existing.currentTableId;
     const now = new Date();
 
+    // Encerramento forçado nunca conta uso de cupom (nenhum pagamento
+    // aconteceu) — só zera o que estava pendente, igual orders/payments.
     const updated = await tx.comanda.update({
       where: { id },
       data: {
@@ -54,6 +56,9 @@ export async function POST(
         closedAt: now,
         openedAt: now,
         currentTableId: null,
+        couponId: null,
+        couponCode: null,
+        discountCents: 0,
       },
     });
 

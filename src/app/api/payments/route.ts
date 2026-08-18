@@ -56,7 +56,10 @@ export async function POST(request: Request) {
       }),
     ]);
 
-    const totalCents = currentOrders.reduce((a, o) => a + o.totalCents, 0);
+    const grossCents = currentOrders.reduce((a, o) => a + o.totalCents, 0);
+    // Cupom aplicado nesta rodada (ver /api/comandas/[id]/coupon) — abate do
+    // total antes de calcular saldo/fechamento, igual desconto de verdade.
+    const totalCents = Math.max(grossCents - comanda.discountCents, 0);
     const paidSoFar = currentPayments.reduce((a, p) => a + p.amountCents, 0);
     const balanceCents = totalCents - paidSoFar;
     const newPaid = paidSoFar + amountCents;
@@ -73,6 +76,13 @@ export async function POST(request: Request) {
       },
     });
 
+    if (closesComanda && comanda.couponId) {
+      await tx.coupon.update({
+        where: { id: comanda.couponId },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
+
     let updatedComanda = comanda;
     if (closesComanda) {
       const previousTableId = comanda.currentTableId;
@@ -80,7 +90,7 @@ export async function POST(request: Request) {
       // Fecha e já libera na mesma hora: some da mesa e volta pra "aberta"
       // zerada, pronta pro próximo cliente pegar o mesmo cartão físico.
       // `openedAt` reinicia aqui — é a marca d'água que separa este
-      // atendimento do próximo.
+      // atendimento do próximo. O cupom também é da rodada — zera junto.
       updatedComanda = await tx.comanda.update({
         where: { id: comandaId },
         data: {
@@ -88,6 +98,9 @@ export async function POST(request: Request) {
           closedAt: now,
           openedAt: now,
           currentTableId: null,
+          couponId: null,
+          couponCode: null,
+          discountCents: 0,
         },
       });
       if (previousTableId) {
