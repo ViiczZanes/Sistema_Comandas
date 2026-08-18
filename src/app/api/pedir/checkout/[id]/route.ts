@@ -7,10 +7,10 @@ import type { PricedItem } from "@/lib/orderItems";
 
 const EXPIRE_AFTER_MS = 5 * 60 * 1000;
 
-// A tela do totem faz polling nessa rota enquanto espera o pagamento. Na
-// primeira vez que o status vira "approved", o Order (e o Payment que o
-// quita) nascem aqui dentro — é o único lugar que cria pedido de totem,
-// então a cozinha nunca vê um carrinho que não foi pago de verdade.
+// Espelha src/app/api/totem/checkout/[id]/route.ts (poll + criação do Order
+// só no primeiro "approved"), com a diferença de copiar channel/
+// deliveryAddress/scheduledFor do Checkout pro Order — Cozinha e PDV usam
+// esses campos pra mostrar entrega/retirada agendada corretamente.
 export async function GET(
   _request: Request,
   ctx: { params: Promise<{ id: string }> }
@@ -22,8 +22,6 @@ export async function GET(
     return NextResponse.json({ error: "Checkout não encontrado." }, { status: 404 });
   }
 
-  // Já resolvido — devolve o resultado direto, sem consultar o provider de
-  // novo (evita criar o pedido duas vezes se a tela pedir status repetido).
   if (checkout.status === "approved") {
     const order = checkout.orderId
       ? await prisma.order.findUnique({ where: { id: checkout.orderId }, select: { number: true } })
@@ -62,10 +60,12 @@ export async function GET(
     const order = await tx.order.create({
       data: {
         number,
-        channel: "KIOSK",
+        channel: checkout.channel,
         totalCents: checkout.amountCents,
         discountCents: checkout.discountCents,
         couponCode: coupon?.code ?? null,
+        deliveryAddress: checkout.deliveryAddress,
+        scheduledFor: checkout.scheduledFor,
         items: {
           create: items.map((item) => ({
             productId: item.productId,

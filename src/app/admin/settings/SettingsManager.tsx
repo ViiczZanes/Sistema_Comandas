@@ -22,6 +22,8 @@ type SettingsDTO = {
   serviceFeeEnabled: boolean;
   serviceFeePercent: number;
   kioskEnabled: boolean;
+  deliveryEnabled: boolean;
+  scheduledPickupEnabled: boolean;
 };
 
 export function SettingsManager({
@@ -41,6 +43,8 @@ export function SettingsManager({
     serviceFeeEnabled: settings.serviceFeeEnabled,
     serviceFeePercent: settings.serviceFeePercent,
     kioskEnabled: settings.kioskEnabled,
+    deliveryEnabled: settings.deliveryEnabled,
+    scheduledPickupEnabled: settings.scheduledPickupEnabled,
   });
   const [saving, setSaving] = useState(false);
 
@@ -78,6 +82,8 @@ export function SettingsManager({
           serviceFeeEnabled: form.serviceFeeEnabled,
           serviceFeePercent: form.serviceFeePercent,
           kioskEnabled: form.kioskEnabled,
+          deliveryEnabled: form.deliveryEnabled,
+          scheduledPickupEnabled: form.scheduledPickupEnabled,
         }),
       });
       const data = await res.json();
@@ -240,6 +246,47 @@ export function SettingsManager({
                     className="flex items-center gap-1 text-brand-600 hover:underline"
                   >
                     Abrir painel de senhas <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              )}
+            </div>
+          </Field>
+
+          <Field label="Pedido remoto (entrega e retirada agendada)">
+            <div className="space-y-2.5">
+              <label className="flex items-center gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.deliveryEnabled}
+                  onChange={(e) => setForm({ ...form, deliveryEnabled: e.target.checked })}
+                  className="h-4 w-4 accent-brand-600"
+                />
+                <span className="text-stone-700">
+                  Ativar entrega — cliente paga e recebe no endereço
+                </span>
+              </label>
+              <label className="flex items-center gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.scheduledPickupEnabled}
+                  onChange={(e) =>
+                    setForm({ ...form, scheduledPickupEnabled: e.target.checked })
+                  }
+                  className="h-4 w-4 accent-brand-600"
+                />
+                <span className="text-stone-700">
+                  Ativar retirada agendada — cliente escolhe um horário fixo e
+                  retira no balcão
+                </span>
+              </label>
+              {(form.deliveryEnabled || form.scheduledPickupEnabled) && (
+                <div className="flex flex-wrap gap-3 pl-7 text-sm">
+                  <Link
+                    href="/pedir"
+                    target="_blank"
+                    className="flex items-center gap-1 text-brand-600 hover:underline"
+                  >
+                    Abrir tela de pedido remoto <ExternalLink className="h-3.5 w-3.5" />
                   </Link>
                 </div>
               )}

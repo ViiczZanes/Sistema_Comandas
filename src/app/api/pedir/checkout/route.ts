@@ -5,30 +5,70 @@ import { getSettings } from "@/lib/settings";
 import { orderItemSchema, priceOrderItems } from "@/lib/orderItems";
 import { checkCoupon } from "@/lib/coupons";
 import { getPaymentProvider } from "@/lib/payments/provider";
+import { isValidPickupSlot } from "@/lib/pickupSlots";
 
+// Checkout compartilhado por delivery e retirada agendada — rota própria
+// (não reaproveita /api/totem/checkout) de propósito, pra não arriscar
+// regressão no totem já testado. A sessão de pagamento em si (model
+// Checkout) e as peças de precificação/cupom/provider são as mesmas.
 const bodySchema = z.object({
   items: z.array(orderItemSchema).min(1),
   method: z.enum(["PIX", "CREDIT", "DEBIT"]),
   couponCode: z.string().trim().min(1).optional(),
+  channel: z.enum(["DELIVERY", "SCHEDULED"]),
+  deliveryAddress: z.string().trim().min(5).max(300).optional(),
+  scheduledFor: z.string().datetime().optional(),
 });
 
-// Cliente monta o carrinho no totem e aperta "Pagar" — isso só cria a
-// sessão de checkout e devolve o QR de pagamento (se for PIX). O pedido em
-// si (que a cozinha vê) só nasce quando o pagamento é confirmado — ver
-// GET /api/totem/checkout/[id].
 export async function POST(request: Request) {
   const settings = await getSettings();
-  if (!settings.kioskEnabled) {
-    return NextResponse.json(
-      { error: "O totem não está ativado neste restaurante." },
-      { status: 409 }
-    );
-  }
 
   const json = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+  }
+  const { channel } = parsed.data;
+
+  if (channel === "DELIVERY") {
+    if (!settings.deliveryEnabled) {
+      return NextResponse.json(
+        { error: "A entrega não está ativada neste restaurante." },
+        { status: 409 }
+      );
+    }
+    if (!parsed.data.deliveryAddress) {
+      return NextResponse.json(
+        { error: "Informe o endereço de entrega." },
+        { status: 400 }
+      );
+    }
+  }
+
+  let scheduledFor: Date | null = null;
+  if (channel === "SCHEDULED") {
+    if (!settings.scheduledPickupEnabled) {
+      return NextResponse.json(
+        { error: "A retirada agendada não está ativada neste restaurante." },
+        { status: 409 }
+      );
+    }
+    if (!parsed.data.scheduledFor) {
+      return NextResponse.json(
+        { error: "Escolha um horário de retirada." },
+        { status: 400 }
+      );
+    }
+    // Nunca confia no horário vindo do cliente — revalida contra a mesma
+    // grade que GET /api/pedir/slots calcula agora.
+    const candidate = new Date(parsed.data.scheduledFor);
+    if (!isValidPickupSlot(candidate)) {
+      return NextResponse.json(
+        { error: "Esse horário não está mais disponível. Escolha outro." },
+        { status: 409 }
+      );
+    }
+    scheduledFor = candidate;
   }
 
   const priced = await priceOrderItems(parsed.data.items);
@@ -39,8 +79,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Carrinho vazio." }, { status: 400 });
   }
 
-  // Nunca confia num desconto vindo do cliente — recalcula o cupom aqui,
-  // do zero, contra o subtotal de verdade.
   let couponId: string | null = null;
   let discountCents = 0;
   if (parsed.data.couponCode) {
@@ -59,6 +97,9 @@ export async function POST(request: Request) {
       subtotalCents: priced.totalCents,
       amountCents,
       method: parsed.data.method,
+      channel,
+      deliveryAddress: channel === "DELIVERY" ? parsed.data.deliveryAddress : null,
+      scheduledFor,
       couponId,
       discountCents,
     },
@@ -76,7 +117,6 @@ export async function POST(request: Request) {
     amountCents,
     discountCents,
     method: parsed.data.method,
-    // QR só faz sentido pra PIX — cartão simula "aproxime/insira" na tela.
     qrCodeBase64: parsed.data.method === "PIX" ? intent.qrCodeBase64 : undefined,
   });
 }

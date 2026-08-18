@@ -19,6 +19,8 @@ const bodySchema = z.object({
   serviceFeeEnabled: z.boolean().optional(),
   serviceFeePercent: z.number().int().min(0).max(100).optional(),
   kioskEnabled: z.boolean().optional(),
+  deliveryEnabled: z.boolean().optional(),
+  scheduledPickupEnabled: z.boolean().optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -63,6 +65,17 @@ export async function PATCH(request: Request) {
   if (otherFieldsChanged) changes.push("identidade visual");
   if (data.kioskEnabled !== undefined && data.kioskEnabled !== before.kioskEnabled) {
     changes.push(settings.kioskEnabled ? "totem ativado" : "totem desativado");
+  }
+  if (data.deliveryEnabled !== undefined && data.deliveryEnabled !== before.deliveryEnabled) {
+    changes.push(settings.deliveryEnabled ? "delivery ativado" : "delivery desativado");
+  }
+  if (
+    data.scheduledPickupEnabled !== undefined &&
+    data.scheduledPickupEnabled !== before.scheduledPickupEnabled
+  ) {
+    changes.push(
+      settings.scheduledPickupEnabled ? "retirada agendada ativada" : "retirada agendada desativada"
+    );
   }
   if (changes.length > 0) {
     logAction({

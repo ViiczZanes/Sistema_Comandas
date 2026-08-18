@@ -1,0 +1,855 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  ShoppingBag,
+  ChevronDown,
+  ChevronLeft,
+  Minus,
+  Plus,
+  Trash2,
+  Check,
+  X,
+  UtensilsCrossed,
+  Ban,
+  QrCode,
+  CreditCard,
+  Smartphone,
+  Tag,
+  PartyPopper,
+  AlertCircle,
+  Truck,
+  CalendarClock,
+  MapPin,
+  Clock3,
+} from "lucide-react";
+import { formatCents } from "@/lib/money";
+import { randomId } from "@/lib/id";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Logo } from "@/components/Logo";
+import { cn } from "@/lib/cn";
+
+type Channel = "DELIVERY" | "SCHEDULED";
+type PaymentMethod = "PIX" | "CREDIT" | "DEBIT";
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Smartphone }[] = [
+  { value: "PIX", label: "PIX", icon: Smartphone },
+  { value: "CREDIT", label: "Cartão de crédito", icon: CreditCard },
+  { value: "DEBIT", label: "Cartão de débito", icon: CreditCard },
+];
+
+type OptionDTO = {
+  id: string;
+  name: string;
+  type: "ADDITIONAL" | "REMOVABLE";
+  priceCents: number;
+};
+
+type ProductDTO = {
+  id: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  image: string | null;
+  soldOut: boolean;
+  options: OptionDTO[];
+};
+
+type CategoryDTO = {
+  id: string;
+  name: string;
+  products: ProductDTO[];
+};
+
+type CartLine = {
+  key: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPriceCents: number;
+  optionIds: string[];
+  optionsSummary: string;
+  observation?: string;
+};
+
+type Screen =
+  | "channelPick"
+  | "order"
+  | "cart"
+  | "detail"
+  | "method"
+  | "paying"
+  | "done"
+  | "error";
+
+export function PedirClient({
+  categories,
+  restaurantName,
+  logoUrl,
+  deliveryEnabled,
+  scheduledPickupEnabled,
+}: {
+  categories: CategoryDTO[];
+  restaurantName: string;
+  logoUrl: string | null;
+  deliveryEnabled: boolean;
+  scheduledPickupEnabled: boolean;
+}) {
+  const bothEnabled = deliveryEnabled && scheduledPickupEnabled;
+  const [channel, setChannel] = useState<Channel | null>(
+    bothEnabled ? null : deliveryEnabled ? "DELIVERY" : "SCHEDULED"
+  );
+  const [screen, setScreen] = useState<Screen>(bothEnabled ? "channelPick" : "order");
+
+  const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "");
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [openProduct, setOpenProduct] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [checkout, setCheckout] = useState<{
+    checkoutId: string;
+    amountCents: number;
+    method: PaymentMethod;
+    qrCodeBase64?: string;
+  } | null>(null);
+  const [orderNumber, setOrderNumber] = useState<number | null>(null);
+
+  const [couponInput, setCouponInput] = useState("");
+  const [coupon, setCoupon] = useState<{ code: string; discountCents: number } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+
+  const [address, setAddress] = useState("");
+  const [slots, setSlots] = useState<string[] | null>(null);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState<string | null>(null);
+
+  const subtotal = cart.reduce((a, l) => a + l.unitPriceCents * l.quantity, 0);
+  const discountCents = coupon ? Math.min(coupon.discountCents, subtotal) : 0;
+  const total = Math.max(subtotal - discountCents, 0);
+  const itemCount = cart.reduce((a, l) => a + l.quantity, 0);
+
+  async function applyCoupon() {
+    if (!couponInput.trim()) return;
+    setApplyingCoupon(true);
+    setCouponError(null);
+    try {
+      // Reaproveita a mesma rota de preview do totem — validação de cupom
+      // não depende de canal (ver src/lib/coupons.ts).
+      const res = await fetch("/api/totem/coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput.trim(), subtotalCents: subtotal }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCouponError(data.error ?? "Cupom inválido.");
+        setCoupon(null);
+        return;
+      }
+      setCoupon({ code: data.code, discountCents: data.discountCents });
+      setCouponInput("");
+    } catch {
+      setCouponError("Sem conexão com o sistema.");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  }
+
+  function removeCoupon() {
+    setCoupon(null);
+    setCouponError(null);
+  }
+
+  function resetAll() {
+    setScreen(bothEnabled ? "channelPick" : "order");
+    setChannel(bothEnabled ? null : deliveryEnabled ? "DELIVERY" : "SCHEDULED");
+    setCart([]);
+    setOpenProduct(null);
+    setErrorMessage(null);
+    setCheckout(null);
+    setOrderNumber(null);
+    setCoupon(null);
+    setCouponInput("");
+    setCouponError(null);
+    setAddress("");
+    setScheduledFor(null);
+  }
+
+  function addToCart(line: Omit<CartLine, "key">) {
+    setCart((prev) => [...prev, { ...line, key: randomId() }]);
+    setOpenProduct(null);
+  }
+
+  function removeLine(key: string) {
+    setCart((prev) => prev.filter((l) => l.key !== key));
+  }
+
+  function changeQuantity(key: string, delta: number) {
+    setCart((prev) =>
+      prev
+        .map((l) => (l.key === key ? { ...l, quantity: l.quantity + delta } : l))
+        .filter((l) => l.quantity > 0)
+    );
+  }
+
+  // Busca a grade de horários só quando entra na etapa de detalhe do
+  // canal SCHEDULED — evita chamar a rota à toa nos outros passos.
+  useEffect(() => {
+    if (screen !== "detail" || channel !== "SCHEDULED") return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadingSlots(true);
+    fetch("/api/pedir/slots")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setSlots(data.slots ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, channel]);
+
+  async function startPayment(method: PaymentMethod) {
+    if (!channel) return;
+    setScreen("paying");
+    setErrorMessage(null);
+    try {
+      const res = await fetch("/api/pedir/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method,
+          couponCode: coupon?.code,
+          channel,
+          deliveryAddress: channel === "DELIVERY" ? address.trim() : undefined,
+          scheduledFor: channel === "SCHEDULED" ? scheduledFor : undefined,
+          items: cart.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+            optionIds: l.optionIds,
+            observation: l.observation,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMessage(data.error ?? "Não deu pra iniciar o pagamento.");
+        setScreen("error");
+        return;
+      }
+      setCheckout(data);
+    } catch {
+      setErrorMessage("Sem conexão com o sistema.");
+      setScreen("error");
+    }
+  }
+
+  useEffect(() => {
+    if (screen !== "paying" || !checkout) return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      const res = await fetch(`/api/pedir/checkout/${checkout.checkoutId}`);
+      const data = await res.json().catch(() => null);
+      if (cancelled || !data) return;
+      if (data.status === "approved") {
+        setOrderNumber(data.orderNumber);
+        setScreen("done");
+      } else if (data.status === "declined" || data.status === "expired") {
+        setErrorMessage(
+          data.status === "expired"
+            ? "O tempo pra pagar esgotou."
+            : "O pagamento não foi aprovado."
+        );
+        setScreen("error");
+      }
+    }, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [screen, checkout]);
+
+  if (screen === "channelPick") {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-stone-50 px-6 text-center">
+        <Logo size="md" logoUrl={logoUrl} name={restaurantName} />
+        <div>
+          <h1 className="text-2xl font-bold text-stone-900">Como você quer receber?</h1>
+          <p className="mt-1 text-stone-500">Escolha uma opção pra continuar.</p>
+        </div>
+        <div className="flex w-full max-w-sm flex-col gap-3">
+          <button
+            onClick={() => {
+              setChannel("DELIVERY");
+              setScreen("order");
+            }}
+            className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-left shadow-sm hover:border-brand-300 hover:bg-brand-50"
+          >
+            <Truck className="h-6 w-6 shrink-0 text-brand-600" />
+            <div>
+              <p className="text-lg font-semibold text-stone-900">Entrega</p>
+              <p className="text-sm text-stone-500">Receba no seu endereço</p>
+            </div>
+          </button>
+          <button
+            onClick={() => {
+              setChannel("SCHEDULED");
+              setScreen("order");
+            }}
+            className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-left shadow-sm hover:border-brand-300 hover:bg-brand-50"
+          >
+            <CalendarClock className="h-6 w-6 shrink-0 text-brand-600" />
+            <div>
+              <p className="text-lg font-semibold text-stone-900">Retirada agendada</p>
+              <p className="text-sm text-stone-500">Escolha um horário e retire no balcão</p>
+            </div>
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (screen === "done") {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-emerald-600 px-6 text-center text-white">
+        <PartyPopper className="h-16 w-16" />
+        <div>
+          <p className="text-lg font-semibold text-emerald-100">Pedido confirmado</p>
+          <p className="text-6xl font-black tabular-nums">#{orderNumber}</p>
+        </div>
+        <p className="max-w-sm text-emerald-100">
+          {channel === "DELIVERY"
+            ? "Seu pedido já está sendo preparado — chega em cerca de 40 minutos."
+            : scheduledFor
+              ? `Retire no balcão às ${formatTime(scheduledFor)}.`
+              : "Retire no balcão no horário combinado."}
+        </p>
+        <button
+          onClick={resetAll}
+          className="text-sm font-medium text-emerald-100 underline underline-offset-4"
+        >
+          Fazer novo pedido
+        </button>
+      </main>
+    );
+  }
+
+  if (screen === "error") {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-100 px-6 text-center">
+        <AlertCircle className="h-14 w-14 text-red-500" />
+        <div>
+          <h1 className="text-xl font-bold text-stone-900">Não deu certo</h1>
+          <p className="mt-1 max-w-sm text-stone-500">{errorMessage}</p>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={() => setScreen("cart")}>
+            Voltar ao carrinho
+          </Button>
+          <Button variant="danger" onClick={resetAll}>
+            Cancelar pedido
+          </Button>
+        </div>
+      </main>
+    );
+  }
+
+  if (screen === "paying") {
+    const isPix = checkout?.method === "PIX";
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-900 px-6 text-center text-white">
+        {isPix ? (
+          <>
+            <QrCode className="h-12 w-12 text-emerald-400" />
+            {checkout?.qrCodeBase64 ? (
+              <div className="rounded-2xl bg-white p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`data:image/png;base64,${checkout.qrCodeBase64}`}
+                  alt="QR Code de pagamento PIX"
+                  className="h-48 w-48"
+                />
+              </div>
+            ) : (
+              <div className="flex h-48 w-48 items-center justify-center rounded-2xl bg-stone-800">
+                <span className="h-8 w-8 animate-spin rounded-full border-4 border-stone-600 border-t-white" />
+              </div>
+            )}
+            <div>
+              <p className="text-2xl font-bold">Escaneie e pague pelo PIX</p>
+              <p className="mt-1 text-stone-400">
+                Total: {formatCents(checkout?.amountCents ?? total)}
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-stone-800">
+              <CreditCard className="h-10 w-10 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">
+                Confirme o pagamento no cartão de {checkout?.method === "CREDIT" ? "crédito" : "débito"}
+              </p>
+              <p className="mt-1 text-stone-400">
+                Total: {formatCents(checkout?.amountCents ?? total)}
+              </p>
+            </div>
+          </>
+        )}
+        <p className="text-sm text-stone-500">Aguardando confirmação do pagamento...</p>
+      </main>
+    );
+  }
+
+  if (screen === "method") {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-50 px-6 text-center">
+        <div>
+          <h1 className="text-2xl font-bold text-stone-900">Como você quer pagar?</h1>
+          <p className="mt-1 text-stone-500">Total: {formatCents(total)}</p>
+        </div>
+        <div className="flex w-full max-w-sm flex-col gap-3">
+          {PAYMENT_METHODS.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => startPayment(m.value)}
+              className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-left text-lg font-semibold text-stone-900 shadow-sm hover:border-brand-300 hover:bg-brand-50"
+            >
+              <m.icon className="h-6 w-6 text-brand-600" />
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setScreen("detail")}
+          className="text-sm font-medium text-stone-400 underline underline-offset-4"
+        >
+          Voltar
+        </button>
+      </main>
+    );
+  }
+
+  if (screen === "detail") {
+    const canContinue = channel === "DELIVERY" ? address.trim().length >= 5 : !!scheduledFor;
+    return (
+      <main className="flex min-h-screen flex-col bg-stone-50">
+        <div className="flex items-center gap-3 border-b border-stone-200 bg-white px-6 py-4">
+          <button
+            onClick={() => setScreen("cart")}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <h1 className="text-xl font-bold text-stone-900">
+            {channel === "DELIVERY" ? "Endereço de entrega" : "Horário de retirada"}
+          </h1>
+        </div>
+
+        <div className="flex-1 space-y-4 px-6 py-6">
+          {channel === "DELIVERY" ? (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                <MapPin className="h-3.5 w-3.5" />
+                Endereço completo
+              </label>
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={4}
+                placeholder="Rua, número, bairro, complemento, ponto de referência..."
+                className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
+              />
+            </div>
+          ) : loadingSlots ? (
+            <p className="py-12 text-center text-stone-400">Carregando horários...</p>
+          ) : slots && slots.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {slots.map((slot) => (
+                <button
+                  key={slot}
+                  onClick={() => setScheduledFor(slot)}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-semibold",
+                    scheduledFor === slot
+                      ? "border-brand-600 bg-brand-600 text-white"
+                      : "border-stone-300 bg-white text-stone-700"
+                  )}
+                >
+                  <Clock3 className="h-3.5 w-3.5" />
+                  {formatTime(slot)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="py-12 text-center text-stone-400">
+              Nenhum horário disponível no momento.
+            </p>
+          )}
+        </div>
+
+        <div className="border-t border-stone-200 bg-white px-6 py-5">
+          <Button
+            size="lg"
+            className="w-full"
+            disabled={!canContinue}
+            onClick={() => setScreen("method")}
+          >
+            Continuar
+          </Button>
+        </div>
+      </main>
+    );
+  }
+
+  // screen === "order" | "cart"
+  return (
+    <div className="flex min-h-screen flex-col bg-stone-50">
+      <header className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4">
+        <Logo size="md" logoUrl={logoUrl} name={restaurantName} />
+        {channel && (
+          <span className="flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700">
+            {channel === "DELIVERY" ? <Truck className="h-3.5 w-3.5" /> : <CalendarClock className="h-3.5 w-3.5" />}
+            {channel === "DELIVERY" ? "Entrega" : "Retirada agendada"}
+          </span>
+        )}
+      </header>
+
+      {screen === "order" && (
+        <>
+          <nav className="flex gap-2 overflow-x-auto border-b border-stone-200 bg-white px-6 py-3">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setActiveCategory(c.id)}
+                className={cn(
+                  "shrink-0 rounded-full px-5 py-2.5 text-base font-semibold transition-colors",
+                  activeCategory === c.id
+                    ? "bg-brand-600 text-white"
+                    : "bg-stone-100 text-stone-600"
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </nav>
+
+          <main className="flex-1 overflow-y-auto px-6 py-6 pb-32">
+            <div className="mx-auto grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2">
+              {categories
+                .find((c) => c.id === activeCategory)
+                ?.products.map((product) => (
+                  <PedirProductCard
+                    key={product.id}
+                    product={product}
+                    open={openProduct === product.id}
+                    onToggle={() =>
+                      setOpenProduct(openProduct === product.id ? null : product.id)
+                    }
+                    onAdd={addToCart}
+                  />
+                ))}
+            </div>
+          </main>
+
+          {itemCount > 0 && (
+            <button
+              onClick={() => setScreen("cart")}
+              className="fixed inset-x-6 bottom-6 z-20 mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl bg-brand-600 px-6 py-5 text-lg text-white shadow-xl shadow-brand-900/25"
+            >
+              <span className="flex items-center gap-2 font-bold">
+                <ShoppingBag className="h-6 w-6" />
+                {itemCount} {itemCount === 1 ? "item" : "itens"}
+              </span>
+              <span className="font-black">Ver carrinho · {formatCents(total)}</span>
+            </button>
+          )}
+        </>
+      )}
+
+      {screen === "cart" && (
+        <div className="flex flex-1 flex-col">
+          <div className="flex items-center gap-3 border-b border-stone-200 px-6 py-4">
+            <button
+              onClick={() => setScreen("order")}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <h1 className="text-xl font-bold text-stone-900">Seu pedido</h1>
+          </div>
+
+          <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5">
+            {cart.length === 0 && (
+              <p className="py-12 text-center text-stone-400">Carrinho vazio.</p>
+            )}
+            {cart.map((line) => (
+              <div
+                key={line.key}
+                className="flex items-start justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-lg font-semibold text-stone-900">
+                    {line.quantity}x {line.name}
+                  </p>
+                  {line.optionsSummary && (
+                    <p className="text-sm text-stone-500">{line.optionsSummary}</p>
+                  )}
+                  <p className="mt-1 font-bold text-brand-700">
+                    {formatCents(line.unitPriceCents * line.quantity)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <div className="flex items-center gap-1 rounded-full border border-stone-300 p-0.5">
+                    <button
+                      onClick={() => changeQuantity(line.key, -1)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <span className="w-6 text-center text-base font-bold">{line.quantity}</span>
+                    <button
+                      onClick={() => changeQuantity(line.key, 1)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => removeLine(line.key)}
+                    className="flex items-center gap-1 text-xs font-medium text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    remover
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-stone-200 bg-white px-6 py-5">
+            {coupon ? (
+              <div className="mb-3 flex items-center justify-between rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm">
+                <span className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                  <Tag className="h-4 w-4" />
+                  Cupom {coupon.code} aplicado
+                </span>
+                <button onClick={removeCoupon} className="font-medium text-emerald-700 underline">
+                  remover
+                </button>
+              </div>
+            ) : (
+              <div className="mb-3">
+                <div className="flex gap-2">
+                  <Input
+                    icon={<Tag />}
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    placeholder="Tenho um cupom"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="secondary"
+                    loading={applyingCoupon}
+                    disabled={!couponInput.trim()}
+                    onClick={applyCoupon}
+                  >
+                    Aplicar
+                  </Button>
+                </div>
+                {couponError && <p className="mt-1.5 text-sm text-red-600">{couponError}</p>}
+              </div>
+            )}
+
+            {discountCents > 0 && (
+              <div className="mb-1 flex items-center justify-between text-sm text-stone-500">
+                <span>Subtotal</span>
+                <span>{formatCents(subtotal)}</span>
+              </div>
+            )}
+            {discountCents > 0 && (
+              <div className="mb-1 flex items-center justify-between text-sm text-emerald-700">
+                <span>Desconto</span>
+                <span>− {formatCents(discountCents)}</span>
+              </div>
+            )}
+            <div className="mb-3 flex items-center justify-between text-xl font-bold text-stone-900">
+              <span>Total</span>
+              <span>{formatCents(total)}</span>
+            </div>
+            <Button
+              size="lg"
+              className="w-full"
+              disabled={cart.length === 0}
+              onClick={() => setScreen("detail")}
+            >
+              Continuar · {formatCents(total)}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function PedirProductCard({
+  product,
+  open,
+  onToggle,
+  onAdd,
+}: {
+  product: ProductDTO;
+  open: boolean;
+  onToggle: () => void;
+  onAdd: (line: Omit<CartLine, "key">) => void;
+}) {
+  const [quantity, setQuantity] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const additionals = product.options.filter((o) => o.type === "ADDITIONAL");
+  const removables = product.options.filter((o) => o.type === "REMOVABLE");
+
+  const unitPriceCents = useMemo(() => {
+    const additionalsTotal = additionals
+      .filter((o) => selectedIds.includes(o.id))
+      .reduce((acc, o) => acc + o.priceCents, 0);
+    return product.priceCents + additionalsTotal;
+  }, [additionals, selectedIds, product.priceCents]);
+
+  function toggleOption(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  }
+
+  function handleAdd() {
+    const selectedAdditionals = additionals.filter((o) => selectedIds.includes(o.id));
+    const selectedRemovables = removables.filter((o) => selectedIds.includes(o.id));
+    const summaryParts = [
+      ...selectedAdditionals.map((o) => `+ ${o.name}`),
+      ...selectedRemovables.map((o) => `sem ${o.name}`),
+    ];
+    onAdd({
+      productId: product.id,
+      name: product.name,
+      quantity,
+      unitPriceCents,
+      optionIds: selectedIds,
+      optionsSummary: summaryParts.join(", "),
+    });
+    setQuantity(1);
+    setSelectedIds([]);
+  }
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-2xl border bg-white",
+        open ? "border-brand-300 shadow-md" : "border-stone-200"
+      )}
+    >
+      <button
+        onClick={() => !product.soldOut && onToggle()}
+        disabled={product.soldOut}
+        className="flex w-full items-center gap-3 p-4 text-left disabled:opacity-60"
+      >
+        {product.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={product.image}
+            alt=""
+            className={cn("h-16 w-16 shrink-0 rounded-xl object-cover", product.soldOut && "grayscale")}
+          />
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-300">
+            <UtensilsCrossed className="h-6 w-6" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-stone-900">{product.name}</p>
+          <p className="text-base font-bold text-brand-700">{formatCents(product.priceCents)}</p>
+        </div>
+        {product.soldOut ? (
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-500">
+            <Ban className="h-3.5 w-3.5" />
+            Esgotado
+          </span>
+        ) : (
+          <ChevronDown className={cn("h-5 w-5 shrink-0 text-stone-400", open && "rotate-180 text-brand-600")} />
+        )}
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t border-stone-100 bg-stone-50/60 p-4">
+          {additionals.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {additionals.map((option) => {
+                const selected = selectedIds.includes(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => toggleOption(option.id)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
+                      selected ? "border-brand-600 bg-brand-600 text-white" : "border-stone-300 bg-white text-stone-700"
+                    )}
+                  >
+                    {selected && <Check className="h-3.5 w-3.5" />}
+                    {option.name} +{formatCents(option.priceCents)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {removables.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {removables.map((option) => {
+                const selected = selectedIds.includes(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => toggleOption(option.id)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
+                      selected ? "border-stone-700 bg-stone-700 text-white" : "border-stone-300 bg-white text-stone-700"
+                    )}
+                  >
+                    {selected && <X className="h-3.5 w-3.5" />}
+                    Sem {option.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <div className="flex items-center gap-1 rounded-full border border-stone-300 bg-white p-1">
+              <button
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100"
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+              <span className="w-6 text-center text-sm font-bold">{quantity}</span>
+              <button
+                onClick={() => setQuantity((q) => q + 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+            <Button onClick={handleAdd} className="flex-1">
+              Adicionar · {formatCents(unitPriceCents * quantity)}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -10,8 +10,11 @@ const ORDER: Record<string, number> = {
   ACCEPTED: 1,
   PREPARING: 2,
   READY: 3,
-  DELIVERED: 4,
-  CANCELLED: 5,
+  // Só passa por aqui pedido DELIVERY — os demais canais vão de READY (3)
+  // direto pra DELIVERED (5), sem nunca assumir este status.
+  OUT_FOR_DELIVERY: 4,
+  DELIVERED: 5,
+  CANCELLED: 6,
 };
 
 const bodySchema = z.object({
@@ -20,6 +23,7 @@ const bodySchema = z.object({
     "ACCEPTED",
     "PREPARING",
     "READY",
+    "OUT_FOR_DELIVERY",
     "DELIVERED",
     "CANCELLED",
   ]),
@@ -82,9 +86,13 @@ export async function PATCH(
 
   if (parsed.data.status === "CANCELLED") {
     const origin =
-      order.table && order.comanda
-        ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
-        : "Balcão";
+      order.channel === "DELIVERY"
+        ? "Entrega"
+        : order.channel === "SCHEDULED"
+          ? "Retirada agendada"
+          : order.table && order.comanda
+            ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
+            : "Balcão";
     logAction({
       userId: user.id,
       action: "order.cancel",

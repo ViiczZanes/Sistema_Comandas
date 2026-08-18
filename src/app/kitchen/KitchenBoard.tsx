@@ -9,15 +9,15 @@ import {
   MessageSquareWarning,
   Volume2,
   VolumeX,
+  Bike,
+  MapPin,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Spinner";
 import { cn } from "@/lib/cn";
 import { getOrderUrgency, formatElapsed } from "@/lib/orderAge";
-import {
-  NEXT_ORDER_STATUS,
-  NEXT_ORDER_STATUS_LABEL,
-} from "@/lib/statusLabels";
+import { nextOrderStatus, nextOrderStatusLabel } from "@/lib/statusLabels";
 import { playNewOrderChime, primeNotificationSound } from "@/lib/notificationSound";
 
 const SOUND_PREF_KEY = "comandas:kitchen-sound";
@@ -39,11 +39,22 @@ type OrderItemDTO = {
 type OrderDTO = {
   id: string;
   number: number;
-  status: "NEW" | "ACCEPTED" | "PREPARING" | "READY" | "DELIVERED" | "CANCELLED";
+  status:
+    | "NEW"
+    | "ACCEPTED"
+    | "PREPARING"
+    | "READY"
+    | "OUT_FOR_DELIVERY"
+    | "DELIVERED"
+    | "CANCELLED";
+  channel: "DINE_IN" | "KIOSK" | "DELIVERY" | "SCHEDULED";
   createdAt: string;
   // Pedido de totem (balcão) não tem mesa/comanda — ver OrderChannel.
   table: { number: number } | null;
   comanda: { number: number } | null;
+  // Só preenchidos pra channel DELIVERY / SCHEDULED respectivamente.
+  deliveryAddress: string | null;
+  scheduledFor: string | null;
   items: OrderItemDTO[];
 };
 
@@ -82,7 +93,41 @@ const COLUMNS: {
     accent: "text-emerald-400",
     chip: "bg-emerald-500/15 text-emerald-300",
   },
+  // Só aparece de fato quando algum pedido DELIVERY entra nesse status —
+  // os demais canais pulam READY → DELIVERED direto (ver nextOrderStatus).
+  {
+    status: "OUT_FOR_DELIVERY",
+    label: "Saiu pra entrega",
+    icon: Bike,
+    accent: "text-violet-400",
+    chip: "bg-violet-500/15 text-violet-300",
+  },
 ];
+
+// Rótulo curto do "de onde veio" o pedido, mostrado no chip ao lado do
+// número — o endereço completo (DELIVERY) e o horário (SCHEDULED) ganham
+// uma linha própria abaixo do cabeçalho do card (mais espaço pra caber).
+function originLabel(order: OrderDTO): string {
+  switch (order.channel) {
+    case "DELIVERY":
+      return "Entrega";
+    case "SCHEDULED":
+      return "Retirada agendada";
+    case "KIOSK":
+      return "Balcão";
+    default:
+      return order.table && order.comanda
+        ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
+        : "Balcão";
+  }
+}
+
+function formatScheduledTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 const URGENCY_STYLES = {
   fresh: "border-l-stone-700",
@@ -180,7 +225,7 @@ export function KitchenBoard() {
   }, []);
 
   async function advance(order: OrderDTO) {
-    const next = NEXT_ORDER_STATUS[order.status];
+    const next = nextOrderStatus(order.status, order.channel);
     if (!next) return;
     setOrders((prev) =>
       prev.map((o) => (o.id === order.id ? { ...o, status: next as OrderDTO["status"] } : o))
@@ -234,7 +279,7 @@ export function KitchenBoard() {
       </div>
 
       {loading ? (
-        <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5">
           {COLUMNS.map((col) => (
             <div key={col.status} className="space-y-3">
               <Skeleton className="h-6 w-24 bg-stone-800" />
@@ -244,7 +289,7 @@ export function KitchenBoard() {
           ))}
         </div>
       ) : (
-        <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5">
           {COLUMNS.map((col) => {
             const columnOrders = orders
               .filter((o) => o.status === col.status)
@@ -280,9 +325,7 @@ export function KitchenBoard() {
                                 col.chip
                               )}
                             >
-                              {order.table && order.comanda
-                                ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
-                                : "Balcão"}
+                              {originLabel(order)}
                             </span>
                           </div>
                           <span
@@ -294,6 +337,19 @@ export function KitchenBoard() {
                             {formatElapsed(order.createdAt)}
                           </span>
                         </div>
+
+                        {order.channel === "DELIVERY" && order.deliveryAddress && (
+                          <p className="mb-3 flex items-start gap-1.5 text-xs text-stone-300">
+                            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-400" />
+                            {order.deliveryAddress}
+                          </p>
+                        )}
+                        {order.channel === "SCHEDULED" && order.scheduledFor && (
+                          <p className="mb-3 flex items-center gap-1.5 text-xs text-stone-300">
+                            <CalendarClock className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                            Retirar às {formatScheduledTime(order.scheduledFor)}
+                          </p>
+                        )}
 
                         <ul className="mb-3.5 space-y-2 text-sm">
                           {order.items.map((item) => (
@@ -317,13 +373,13 @@ export function KitchenBoard() {
                           ))}
                         </ul>
 
-                        {NEXT_ORDER_STATUS[order.status] && (
+                        {nextOrderStatus(order.status, order.channel) && (
                           <Button
                             size="sm"
                             className="w-full"
                             onClick={() => advance(order)}
                           >
-                            {NEXT_ORDER_STATUS_LABEL[order.status]}
+                            {nextOrderStatusLabel(order.status, order.channel)}
                           </Button>
                         )}
                       </div>

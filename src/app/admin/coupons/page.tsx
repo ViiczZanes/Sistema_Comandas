@@ -9,7 +9,7 @@ export default async function CouponsPage() {
     <div>
       <AdminPageHeader
         title="Cupons"
-        description="Códigos de desconto aplicáveis pelo cliente no totem, antes de pagar."
+        description="Códigos de desconto aplicáveis no totem, no PDV (mesa) e nos pedidos remotos (entrega e retirada agendada)."
       />
       <CouponsManager
         coupons={coupons.map((c) => ({

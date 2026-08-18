@@ -45,6 +45,12 @@ model Settings {
   // Totem de autoatendimento (balcão) — desligado até o dono ativar.
   kioskEnabled Boolean @default(false)
 
+  // Delivery e retirada agendada — canais remotos (fora do salão), mesmo
+  // padrão do totem: desligados até o dono ativar. Ambos usam a tela
+  // pública /pedir (ver src/app/pedir).
+  deliveryEnabled        Boolean @default(false)
+  scheduledPickupEnabled Boolean @default(false)
+
   updatedAt DateTime @updatedAt
 
   @@map("settings")
@@ -239,13 +245,19 @@ enum OrderStatus {
   ACCEPTED
   PREPARING
   READY
+  // Só usado por pedidos DELIVERY, entre READY e DELIVERED (ver
+  // src/lib/statusLabels.ts — progressão de status é por canal). Os
+  // demais canais vão de READY direto pra DELIVERED.
+  OUT_FOR_DELIVERY
   DELIVERED
   CANCELLED
 }
 
 enum OrderChannel {
-  DINE_IN // mesa + comanda, fluxo original
-  KIOSK   // totem de autoatendimento, retirada no balcão
+  DINE_IN   // mesa + comanda, fluxo original
+  KIOSK     // totem de autoatendimento, retirada no balcão
+  DELIVERY  // pedido remoto, entregue no endereço do cliente
+  SCHEDULED // pedido remoto, retirada agendada no balcão
 }
 
 model Order {
@@ -257,9 +269,9 @@ model Order {
   // sequência — o número também funciona como a senha de retirada.
   number      Int          @unique
   channel     OrderChannel @default(DINE_IN)
-  // Obrigatórios só quando channel = DINE_IN (pedido de totem não tem
-  // mesa nem comanda física — ver KioskCheckout). Validado na aplicação,
-  // não no banco.
+  // Obrigatórios só quando channel = DINE_IN (pedido de totem/delivery/
+  // agendado não tem mesa nem comanda física — ver Checkout). Validado na
+  // aplicação, não no banco.
   tableId     String?
   comandaId   String?
   status      OrderStatus  @default(NEW)
@@ -269,6 +281,11 @@ model Order {
   // pode ser desativado depois sem apagar o histórico de quem usou).
   discountCents Int     @default(0)
   couponCode    String?
+  // Só preenchidos pra channel = DELIVERY / SCHEDULED respectivamente —
+  // denormalizados do Checkout na hora da confirmação, pra Cozinha/PDV
+  // mostrarem sem precisar de join.
+  deliveryAddress String?
+  scheduledFor    DateTime?
   note        String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -276,8 +293,8 @@ model Order {
   table   RestaurantTable? @relation(fields: [tableId], references: [id])
   comanda Comanda?         @relation(fields: [comandaId], references: [id])
   items   OrderItem[]
-  payments      Payment[]
-  kioskCheckout KioskCheckout?
+  payments Payment[]
+  checkout Checkout?
 
   @@index([tableId])
   @@index([comandaId])
@@ -409,15 +426,20 @@ model AuditLog {
 }
 
 // ---------------------------------------------------------------------------
-// Checkout do totem — existe ANTES do Order nascer. O pedido só é criado
-// quando o pagamento é confirmado (a cozinha nunca vê pedido não pago).
-// Guardar isso à parte do carrinho no navegador é o que permite, mais pra
-// frente, um provider de pagamento real confirmar via webhook mesmo que o
-// cliente já tenha saído de perto do totem (PIX costuma ser pago no
-// celular da própria pessoa, não no aparelho do totem).
+// Checkout — sessão de pagamento que existe ANTES do Order nascer, para
+// qualquer canal remoto (totem, delivery, retirada agendada). O pedido só
+// é criado quando o pagamento é confirmado (a cozinha nunca vê pedido não
+// pago). Guardar isso à parte do carrinho no navegador é o que permite,
+// mais pra frente, um provider de pagamento real confirmar via webhook
+// mesmo que o cliente já tenha saído de perto (PIX costuma ser pago no
+// celular da própria pessoa, não no aparelho do totem/computador).
+//
+// Renomeado de KioskCheckout (era exclusivo do totem) — ver
+// src/app/api/pedir/checkout para delivery/agendado, que reaproveita este
+// mesmo model em vez de duplicar a lógica de sessão de pagamento.
 // ---------------------------------------------------------------------------
 
-model KioskCheckout {
+model Checkout {
   id          String @id @default(cuid())
   // Itens do carrinho serializados (JSON) — vira o Order só depois de
   // aprovado, então não tem FK pra produto/opção aqui.
@@ -427,8 +449,16 @@ model KioskCheckout {
   subtotalCents Int @default(0)
   amountCents Int
 
-  // Só PIX/CREDIT/DEBIT fazem sentido no totem (sem gaveta de dinheiro).
+  // Só PIX/CREDIT/DEBIT fazem sentido nesses canais (sem gaveta de dinheiro).
   method PaymentMethod @default(PIX)
+
+  channel OrderChannel @default(KIOSK)
+  // Só preenchido quando channel = DELIVERY.
+  deliveryAddress String?
+  // Só preenchido quando channel = SCHEDULED — valor vem de uma das opções
+  // de GET /api/pedir/slots, revalidado no servidor (não confia no horário
+  // vindo do cliente).
+  scheduledFor DateTime?
 
   status   String @default("pending") // pending | approved | declined | expired
   provider String @default("mock")
@@ -446,7 +476,7 @@ model KioskCheckout {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("kiosk_checkouts")
+  @@map("checkouts")
 }
 
 enum CouponType {
@@ -454,10 +484,12 @@ enum CouponType {
   FIXED   // desconto em centavos, fixo
 }
 
-// Cupom de desconto — hoje só aplicável no totem (ver
-// POST /api/totem/coupon/validate). `usedCount` só incrementa quando o
-// pedido é confirmado de verdade (pagamento aprovado), não na hora de
-// digitar o código, pra não esgotar o limite de uso com carrinho abandonado.
+// Cupom de desconto — aplicável no totem, no PDV (mesa) e nos canais
+// remotos (delivery/agendado), todos reaproveitando src/lib/coupons.ts.
+// `usedCount` só incrementa quando o pedido é confirmado de verdade
+// (pagamento aprovado nos canais remotos, fechamento no PDV), não na hora
+// de digitar o código, pra não esgotar o limite de uso com carrinho
+// abandonado.
 model Coupon {
   id     String     @id @default(cuid())
   code   String     @unique
@@ -473,7 +505,7 @@ model Coupon {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  checkouts KioskCheckout[]
+  checkouts Checkout[]
   comandas  Comanda[]
 
   @@map("coupons")

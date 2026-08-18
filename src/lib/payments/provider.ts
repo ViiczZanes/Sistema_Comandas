@@ -8,7 +8,7 @@ import "server-only";
 //
 // `checkStatus` recebe o `checkoutId` (não um id do provider) de propósito:
 // um gateway real confirma via webhook, então quem sabe se já aprovou é o
-// nosso próprio banco (KioskCheckout.status), não uma chamada síncrona ao
+// nosso próprio banco (Checkout.status), não uma chamada síncrona ao
 // gateway toda vez que alguém pergunta.
 
 export type PaymentIntentStatus = "pending" | "approved" | "declined";

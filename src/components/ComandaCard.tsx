@@ -39,7 +39,16 @@ type OrderItemDTO = {
 type OrderDTO = {
   id: string;
   number: number;
-  status: "NEW" | "ACCEPTED" | "PREPARING" | "READY" | "DELIVERED" | "CANCELLED";
+  // OUT_FOR_DELIVERY nunca acontece nesta tela (é só de canal DELIVERY,
+  // que não passa por aqui) — incluído só pra bater com o enum do banco.
+  status:
+    | "NEW"
+    | "ACCEPTED"
+    | "PREPARING"
+    | "READY"
+    | "OUT_FOR_DELIVERY"
+    | "DELIVERED"
+    | "CANCELLED";
   totalCents: number;
   items: OrderItemDTO[];
 };
