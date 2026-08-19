@@ -332,7 +332,7 @@ export function ComandaCard({
         >
           Transferir
         </Button>
-        {isAdmin && (activeOrders.length > 0 || balanceCents > 0) && (
+        {isAdmin && (
           <Button
             size="sm"
             variant="danger"
