@@ -7,6 +7,7 @@ import {
   Settings as SettingsIcon,
   Tag,
   ShoppingBag,
+  Banknote,
 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -30,6 +31,9 @@ const ACTION_META: Record<string, { icon: typeof XCircle; tone: string }> = {
   "ifood.disconnect": { icon: ShoppingBag, tone: "bg-red-100 text-red-600" },
   "ifood.toggle": { icon: ShoppingBag, tone: "bg-violet-100 text-violet-700" },
   "ifood.sync_catalog": { icon: ShoppingBag, tone: "bg-violet-100 text-violet-700" },
+  "shift.open": { icon: Banknote, tone: "bg-emerald-100 text-emerald-700" },
+  "shift.close": { icon: Banknote, tone: "bg-stone-200 text-stone-600" },
+  "shift.movement": { icon: Banknote, tone: "bg-amber-100 text-amber-700" },
 };
 
 function formatWhen(date: Date): string {

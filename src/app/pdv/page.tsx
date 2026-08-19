@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Ticket, Grid3x3, Ban } from "lucide-react";
+import { Ticket, Grid3x3, Ban, Wallet } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getOpenShift } from "@/lib/cashShift";
 import { TABLE_STATUS_LABEL } from "@/lib/statusLabels";
 import { PdvAutoRefresh } from "@/components/PdvAutoRefresh";
 import { HelpCallsBanner } from "@/components/HelpCallsBanner";
@@ -19,6 +20,7 @@ const STATUS_STYLE = {
 
 export default async function PdvPage() {
   const user = await requireUser(["ADMIN", "WAITER"]);
+  const openShift = await getOpenShift(user.restaurantId);
   const tables = await prisma.restaurantTable.findMany({
     where: { restaurantId: user.restaurantId },
     orderBy: { number: "asc" },
@@ -49,6 +51,17 @@ export default async function PdvPage() {
           </div>
         </div>
         <div className="flex items-end gap-2">
+          <Link href="/pdv/caixa">
+            <Button variant="secondary" size="sm" icon={<Wallet />}>
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  openShift ? "bg-emerald-500" : "bg-stone-300"
+                )}
+              />
+              Caixa
+            </Button>
+          </Link>
           <Link href="/pdv/cardapio">
             <Button variant="secondary" size="sm" icon={<Ban />}>
               Cardápio de hoje

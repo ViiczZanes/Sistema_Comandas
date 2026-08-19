@@ -52,6 +52,8 @@ model Restaurant {
   coupons   Coupon[]
   checkouts Checkout[]
   ifoodIntegration IfoodIntegration?
+  cashShifts    CashShift[]
+  cashMovements CashMovement[]
 
   @@map("restaurants")
 }
@@ -122,6 +124,9 @@ model User {
   sessions   Session[]
   payments   Payment[]  @relation("PaymentRegisteredBy")
   auditLogs  AuditLog[]
+  cashShiftsOpened  CashShift[]    @relation("CashShiftOpenedBy")
+  cashShiftsClosed  CashShift[]    @relation("CashShiftClosedBy")
+  cashMovements     CashMovement[] @relation("CashMovementRegisteredBy")
 
   @@index([restaurantId])
   @@map("users")
@@ -472,6 +477,75 @@ model Payment {
   @@index([comandaId])
   @@index([orderId])
   @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Controle de caixa — abertura/fechamento de turno, sangria/reforço e
+// conferência de dinheiro. Não bloqueia pagamento (Payment continua
+// funcionando igual, com ou sem turno aberto) — é controle por cima do
+// fluxo já existente, não uma trava. Por isso não há FK em Payment
+// nenhuma: o vínculo com o turno é por JANELA DE TEMPO (`paidAt` entre
+// `openedAt` e `closedAt`/agora), mesmo padrão já usado pra vincular
+// pedidos/pagamentos ao "round" atual de uma comanda via
+// `comanda.openedAt` (ver src/lib/comandaRound.ts) — ver
+// src/lib/cashShift.ts pra como isso é somado.
+// ---------------------------------------------------------------------------
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model CashShift {
+  id           String      @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  status       ShiftStatus @default(OPEN)
+
+  openingCents Int
+  openedById   String
+  openedBy     User     @relation("CashShiftOpenedBy", fields: [openedById], references: [id])
+  openedAt     DateTime @default(now())
+
+  closedById String?
+  closedBy   User?     @relation("CashShiftClosedBy", fields: [closedById], references: [id])
+  closedAt   DateTime?
+  // Contado na gaveta por quem fecha, e o esperado calculado no mesmo
+  // instante (abertura + dinheiro recebido - sangrias + reforços) — os
+  // dois ficam gravados aqui como um retrato histórico do fechamento,
+  // não recalculados depois (senão um pagamento lançado com atraso
+  // mudaria a conferência de um turno já fechado).
+  countedCashCents  Int?
+  expectedCashCents Int?
+  notes             String?
+
+  movements CashMovement[]
+
+  @@index([restaurantId, status])
+  @@map("cash_shifts")
+}
+
+enum CashMovementType {
+  WITHDRAWAL // sangria — dinheiro saindo do caixa
+  SUPPLY // reforço — dinheiro entrando fora de uma venda (ex: repor troco)
+}
+
+model CashMovement {
+  id             String           @id @default(cuid())
+  restaurantId   String
+  restaurant     Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  shiftId        String
+  shift          CashShift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  type           CashMovementType
+  amountCents    Int
+  reason         String?
+  registeredById String
+  registeredBy   User             @relation("CashMovementRegisteredBy", fields: [registeredById], references: [id])
+  createdAt      DateTime         @default(now())
+
+  @@index([shiftId])
+  @@index([restaurantId])
+  @@map("cash_movements")
 }
 
 // ---------------------------------------------------------------------------
