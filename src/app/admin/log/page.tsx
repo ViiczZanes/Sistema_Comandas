@@ -29,6 +29,7 @@ const ACTION_META: Record<string, { icon: typeof XCircle; tone: string }> = {
   "ifood.connect": { icon: ShoppingBag, tone: "bg-violet-100 text-violet-700" },
   "ifood.disconnect": { icon: ShoppingBag, tone: "bg-red-100 text-red-600" },
   "ifood.toggle": { icon: ShoppingBag, tone: "bg-violet-100 text-violet-700" },
+  "ifood.sync_catalog": { icon: ShoppingBag, tone: "bg-violet-100 text-violet-700" },
 };
 
 function formatWhen(date: Date): string {

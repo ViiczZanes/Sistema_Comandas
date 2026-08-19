@@ -259,6 +259,14 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Cache do upload de imagem pro catálogo do iFood (ver
+  // src/lib/ifood/catalog.ts) — evita baixar e reenviar a mesma imagem
+  // em toda sincronização. `ifoodImageSourceUrl` guarda qual valor de
+  // `image` gerou o path: se `image` mudar, o cache fica inválido e a
+  // imagem é reenviada na próxima sincronização.
+  ifoodImagePath      String?
+  ifoodImageSourceUrl String?
+
   category Category        @relation(fields: [categoryId], references: [id])
   options  ProductOption[]
   orderItems OrderItem[]
@@ -662,6 +670,12 @@ model IfoodIntegration {
   lastPollAt       DateTime?
   lastErrorAt      DateTime?
   lastErrorMessage String?
+
+  // Idem, mas pra sincronização do cardápio (push cardápio → iFood, ver
+  // src/lib/ifood/catalog.ts) — é um processo separado do poller de
+  // pedidos acima, disparado manualmente pelo Administrador.
+  lastCatalogSyncAt    DateTime?
+  lastCatalogSyncError String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

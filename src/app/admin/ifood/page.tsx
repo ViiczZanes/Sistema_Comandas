@@ -31,6 +31,10 @@ export default async function IfoodPage() {
                 lastPollAt: integration.lastPollAt ? integration.lastPollAt.toISOString() : null,
                 lastErrorAt: integration.lastErrorAt ? integration.lastErrorAt.toISOString() : null,
                 lastErrorMessage: integration.lastErrorMessage,
+                lastCatalogSyncAt: integration.lastCatalogSyncAt
+                  ? integration.lastCatalogSyncAt.toISOString()
+                  : null,
+                lastCatalogSyncError: integration.lastCatalogSyncError,
               }
             : null
         }

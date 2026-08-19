@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
+import { syncSingleProductToIfood } from "@/lib/ifood/catalog";
 
 const bodySchema = z.object({ soldOut: z.boolean() });
 
@@ -35,5 +36,16 @@ export async function PATCH(
   }
 
   const product = await prisma.product.findUnique({ where: { id } });
+
+  // Best-effort: se o produto já foi sincronizado com o iFood, reflete
+  // o esgotado/reabastecido por lá também — sem bloquear a resposta
+  // (o "86" no PDV precisa ser instantâneo) e sem exigir rodar a
+  // sincronização completa do cardápio só por causa disso. Falha aqui
+  // (item nunca sincronizado, iFood fora do ar) fica só no console —
+  // não há onde surfaçar um aviso nesse fluxo rápido de PDV.
+  syncSingleProductToIfood(user.restaurantId, id).catch((err) => {
+    console.error(`[ifood-catalog] falha ao empurrar esgotado do produto ${id}:`, err);
+  });
+
   return NextResponse.json(product);
 }

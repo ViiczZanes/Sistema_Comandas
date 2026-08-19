@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 import { logAction } from "@/lib/auditLog";
 import { formatCents } from "@/lib/money";
+import { syncSingleProductToIfood } from "@/lib/ifood/catalog";
 
 const updateSchema = z.object({
   categoryId: z.string().min(1).optional(),
@@ -79,6 +80,16 @@ export async function PATCH(
       entityType: "Product",
       entityId: product.id,
       summary: `Editou o produto "${before.name}" (${changes.join(", ")})`,
+    });
+  }
+
+  // Best-effort: ativar/desativar decide se o produto existe ou não no
+  // catálogo do iFood (ver src/lib/ifood/catalog.ts) — reflete lá sem
+  // exigir uma sincronização completa só por causa disso. Não bloqueia
+  // a resposta; falha fica só no console.
+  if (parsed.data.active !== undefined && parsed.data.active !== before.active) {
+    syncSingleProductToIfood(user.restaurantId, product.id).catch((err) => {
+      console.error(`[ifood-catalog] falha ao empurrar ativo/inativo do produto ${product.id}:`, err);
     });
   }
 

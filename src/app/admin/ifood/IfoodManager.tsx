@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wifi, WifiOff, CheckCircle2, AlertTriangle, Unplug, ExternalLink, KeyRound } from "lucide-react";
+import {
+  Wifi,
+  WifiOff,
+  CheckCircle2,
+  AlertTriangle,
+  Unplug,
+  ExternalLink,
+  KeyRound,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Field } from "@/components/ui/Input";
@@ -16,9 +25,18 @@ type IntegrationDTO = {
   lastPollAt: string | null;
   lastErrorAt: string | null;
   lastErrorMessage: string | null;
+  lastCatalogSyncAt: string | null;
+  lastCatalogSyncError: string | null;
 } | null;
 
 type Merchant = { id: string; name: string };
+
+type CatalogSyncResult = {
+  ok: boolean;
+  categoriesSynced: number;
+  itemsSynced: number;
+  errors: { productName: string; message: string }[];
+};
 
 // Estado do passo 1 do fluxo distribuído (ver src/lib/ifood/auth.ts) —
 // vive só nesse componente + em memória no servidor. Se a página for
@@ -58,6 +76,8 @@ export function IfoodManager({ integration }: { integration: IntegrationDTO }) {
   const [choosing, setChoosing] = useState<Merchant[] | null>(null);
   const [toggling, setToggling] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [syncingCatalog, setSyncingCatalog] = useState(false);
+  const [lastSyncResult, setLastSyncResult] = useState<CatalogSyncResult | null>(null);
 
   useEffect(() => {
     if (!pending) return;
@@ -193,6 +213,27 @@ export function IfoodManager({ integration }: { integration: IntegrationDTO }) {
     }
   }
 
+  async function syncCatalog() {
+    setSyncingCatalog(true);
+    try {
+      const res = await fetch("/api/ifood/sync-catalog", { method: "POST" });
+      const data = (await res.json()) as CatalogSyncResult;
+      if (!res.ok) {
+        toast.error("Não foi possível sincronizar o cardápio.");
+        return;
+      }
+      setLastSyncResult(data);
+      if (data.errors.length === 0) {
+        toast.success(`Cardápio sincronizado — ${data.itemsSynced} produtos.`);
+      } else {
+        toast.error(`Sincronizado com ${data.errors.length} problema(s) — veja os detalhes abaixo.`);
+      }
+      router.refresh();
+    } finally {
+      setSyncingCatalog(false);
+    }
+  }
+
   if (!integration) {
     if (choosing) {
       return (
@@ -314,6 +355,7 @@ export function IfoodManager({ integration }: { integration: IntegrationDTO }) {
   }
 
   return (
+    <>
     <Card className="max-w-lg space-y-4 p-5">
       <div className="flex items-center gap-3">
         <span
@@ -366,5 +408,51 @@ export function IfoodManager({ integration }: { integration: IntegrationDTO }) {
         </Button>
       </div>
     </Card>
+
+    <Card className="mt-4 max-w-lg space-y-4 p-5">
+      <div>
+        <p className="font-semibold text-stone-900">Cardápio</p>
+        <p className="text-xs text-stone-500">
+          Envia categorias, produtos, opções, preços e imagens pro catálogo do
+          iFood — pra pedidos reais do app poderem referenciar o cardápio de
+          verdade.
+        </p>
+      </div>
+
+      {integration.lastCatalogSyncAt && (
+        <p className="text-xs text-stone-500">
+          Última sincronização: {formatWhen(integration.lastCatalogSyncAt)}
+        </p>
+      )}
+
+      {(lastSyncResult?.errors.length || integration.lastCatalogSyncError) && (
+        <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-medium">
+              {lastSyncResult
+                ? `${lastSyncResult.errors.length} problema(s) na última sincronização:`
+                : "Erro na última sincronização:"}
+            </p>
+            {lastSyncResult ? (
+              <ul className="list-disc space-y-0.5 pl-4">
+                {lastSyncResult.errors.map((e, i) => (
+                  <li key={i}>
+                    <strong>{e.productName}:</strong> {e.message}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>{integration.lastCatalogSyncError}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <Button variant="secondary" loading={syncingCatalog} onClick={syncCatalog} icon={<RefreshCw />}>
+        Sincronizar cardápio
+      </Button>
+    </Card>
+    </>
   );
 }
