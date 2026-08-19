@@ -13,7 +13,7 @@ export async function PATCH(
   request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const { id } = await ctx.params;
@@ -23,17 +23,21 @@ export async function PATCH(
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const category = await prisma.category
-    .update({ where: { id }, data: parsed.data })
-    .catch(() => null);
+  const { count } = await prisma.category
+    .updateMany({
+      where: { id, restaurantId: user.restaurantId },
+      data: parsed.data,
+    })
+    .catch(() => ({ count: 0 }));
 
-  if (!category) {
+  if (count === 0) {
     return NextResponse.json(
       { error: "Categoria não encontrada." },
       { status: 404 }
     );
   }
 
+  const category = await prisma.category.findUnique({ where: { id } });
   return NextResponse.json(category);
 }
 
@@ -41,13 +45,16 @@ export async function DELETE(
   _request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const { id } = await ctx.params;
 
+  let count: number;
   try {
-    await prisma.category.delete({ where: { id } });
+    ({ count } = await prisma.category.deleteMany({
+      where: { id, restaurantId: user.restaurantId },
+    }));
   } catch {
     return NextResponse.json(
       {
@@ -55,6 +62,13 @@ export async function DELETE(
           "Não é possível excluir: existem produtos nessa categoria. Desative-a ou mova os produtos primeiro.",
       },
       { status: 409 }
+    );
+  }
+
+  if (count === 0) {
+    return NextResponse.json(
+      { error: "Categoria não encontrada." },
+      { status: 404 }
     );
   }
 

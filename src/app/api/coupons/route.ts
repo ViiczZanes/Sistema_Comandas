@@ -5,10 +5,13 @@ import { requireApiUser } from "@/lib/apiAuth";
 import { logAction } from "@/lib/auditLog";
 
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
-  const coupons = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
+  const coupons = await prisma.coupon.findMany({
+    where: { restaurantId: user.restaurantId },
+    orderBy: { createdAt: "desc" },
+  });
   return NextResponse.json(coupons);
 }
 
@@ -39,13 +42,18 @@ export async function POST(request: Request) {
   }
 
   const normalizedCode = code.toUpperCase();
-  const existing = await prisma.coupon.findUnique({ where: { code: normalizedCode } });
+  const existing = await prisma.coupon.findUnique({
+    where: {
+      restaurantId_code: { restaurantId: user.restaurantId, code: normalizedCode },
+    },
+  });
   if (existing) {
     return NextResponse.json({ error: "Já existe um cupom com esse código." }, { status: 409 });
   }
 
   const coupon = await prisma.coupon.create({
     data: {
+      restaurantId: user.restaurantId,
       code: normalizedCode,
       type,
       value,
@@ -55,6 +63,7 @@ export async function POST(request: Request) {
   });
 
   logAction({
+    restaurantId: user.restaurantId,
     userId: user.id,
     action: "coupon.create",
     entityType: "Coupon",

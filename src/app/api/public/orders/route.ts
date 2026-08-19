@@ -42,6 +42,12 @@ export async function POST(request: Request) {
       { status: 404 }
     );
   }
+  // Mesa e comanda são resolvidas cada uma por seu próprio token global,
+  // sem saber a priori se são do mesmo restaurante — precisa checar antes
+  // de continuar (mesmo raciocínio de src/app/m/[tableToken]/c/[comandaToken]/page.tsx).
+  if (comanda.restaurantId !== table.restaurantId) {
+    return NextResponse.json({ error: "Mesa não encontrada." }, { status: 404 });
+  }
   if (comanda.status !== "OPEN") {
     return NextResponse.json(
       {
@@ -63,7 +69,7 @@ export async function POST(request: Request) {
 
   const productIds = [...new Set(items.map((i) => i.productId))];
   const products = await prisma.product.findMany({
-    where: { id: { in: productIds }, active: true },
+    where: { id: { in: productIds }, restaurantId: table.restaurantId, active: true },
     include: { options: true },
   });
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -111,10 +117,11 @@ export async function POST(request: Request) {
       };
     });
 
-    const number = await nextOrderNumber(tx);
+    const number = await nextOrderNumber(tx, table.restaurantId);
 
     const order = await tx.order.create({
       data: {
+        restaurantId: table.restaurantId,
         number,
         tableId: table.id,
         comandaId: comanda.id,
@@ -153,8 +160,8 @@ export async function POST(request: Request) {
     return order;
   });
 
-  publish("kitchen", { type: "order-created", orderId: result.id });
-  publish("pdv", {
+  publish(`kitchen:${table.restaurantId}`, { type: "order-created", orderId: result.id });
+  publish(`pdv:${table.restaurantId}`, {
     type: "order-created",
     orderId: result.id,
     tableId: table.id,

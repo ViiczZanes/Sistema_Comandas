@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { QrCode } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { brandScaleCss } from "@/lib/brandColor";
 import { Logo } from "@/components/Logo";
 import { ComandaIdentify } from "./ComandaIdentify";
 
@@ -12,14 +13,13 @@ export default async function IdentifyComandaPage({
 }) {
   const { tableToken } = await params;
 
-  const [table, settings] = await Promise.all([
-    prisma.restaurantTable.findUnique({ where: { qrToken: tableToken } }),
-    getSettings(),
-  ]);
+  const table = await prisma.restaurantTable.findUnique({ where: { qrToken: tableToken } });
   if (!table) notFound();
+  const settings = await getSettings(table.restaurantId);
 
   return (
     <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-6 py-16 text-center">
+      <style dangerouslySetInnerHTML={{ __html: brandScaleCss(settings.brandColorHex) }} />
       <div
         aria-hidden
         className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,theme(colors.brand.100),transparent)]"

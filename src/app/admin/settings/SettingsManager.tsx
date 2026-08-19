@@ -29,9 +29,14 @@ type SettingsDTO = {
 export function SettingsManager({
   settings,
   previewUrl,
+  slug,
 }: {
   settings: SettingsDTO;
   previewUrl: string;
+  /** Identificador do restaurante nas telas públicas que não chegam via QR
+   * Code de mesa/comanda (totem físico, /pedir remoto) — ver
+   * src/app/totem/[slug] e src/app/pedir/[slug]. */
+  slug: string;
 }) {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -234,14 +239,14 @@ export function SettingsManager({
               {form.kioskEnabled && (
                 <div className="flex flex-wrap gap-3 pl-7 text-sm">
                   <Link
-                    href="/totem"
+                    href={`/totem/${slug}`}
                     target="_blank"
                     className="flex items-center gap-1 text-brand-600 hover:underline"
                   >
                     Abrir o totem <ExternalLink className="h-3.5 w-3.5" />
                   </Link>
                   <Link
-                    href="/totem/painel"
+                    href={`/totem/${slug}/painel`}
                     target="_blank"
                     className="flex items-center gap-1 text-brand-600 hover:underline"
                   >
@@ -282,7 +287,7 @@ export function SettingsManager({
               {(form.deliveryEnabled || form.scheduledPickupEnabled) && (
                 <div className="flex flex-wrap gap-3 pl-7 text-sm">
                   <Link
-                    href="/pedir"
+                    href={`/pedir/${slug}`}
                     target="_blank"
                     className="flex items-center gap-1 text-brand-600 hover:underline"
                   >

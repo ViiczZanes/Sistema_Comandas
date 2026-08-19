@@ -1,9 +1,14 @@
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AdminPageHeader } from "@/components/AdminPageHeader";
 import { CouponsManager } from "./CouponsManager";
 
 export default async function CouponsPage() {
-  const coupons = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
+  const user = await requireUser(["ADMIN"]);
+  const coupons = await prisma.coupon.findMany({
+    where: { restaurantId: user.restaurantId },
+    orderBy: { createdAt: "desc" },
+  });
 
   return (
     <div>

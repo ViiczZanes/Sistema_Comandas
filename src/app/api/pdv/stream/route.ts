@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // mesas e comandas) reagir em tempo real a pedidos novos, comandas fechadas,
 // transferidas, etc.
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN", "WAITER"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER"]);
   if (error) return error;
 
   const encoder = new TextEncoder();
@@ -18,7 +18,7 @@ export async function GET() {
     start(controller) {
       controller.enqueue(encoder.encode(`: connected\n\n`));
 
-      unsubscribe = subscribe("pdv", (data) => {
+      unsubscribe = subscribe(`pdv:${user.restaurantId}`, (data) => {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
         );

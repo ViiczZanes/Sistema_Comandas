@@ -11,7 +11,7 @@ export async function POST(
   request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN", "WAITER"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER"]);
   if (error) return error;
 
   const { id } = await ctx.params;
@@ -22,11 +22,13 @@ export async function POST(
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const comanda = await tx.comanda.findUnique({ where: { id } });
+    const comanda = await tx.comanda.findFirst({
+      where: { id, restaurantId: user.restaurantId },
+    });
     if (!comanda) return { error: "not_found" as const };
 
-    const targetTable = await tx.restaurantTable.findUnique({
-      where: { id: parsed.data.tableId },
+    const targetTable = await tx.restaurantTable.findFirst({
+      where: { id: parsed.data.tableId, restaurantId: user.restaurantId },
     });
     if (!targetTable) return { error: "table_not_found" as const };
 
@@ -53,7 +55,7 @@ export async function POST(
     );
   }
 
-  publish("pdv", { type: "comanda-updated", comandaId: id });
+  publish(`pdv:${user.restaurantId}`, { type: "comanda-updated", comandaId: id });
 
   return NextResponse.json(result.comanda);
 }

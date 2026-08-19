@@ -16,7 +16,14 @@ import { EventEmitter } from "node:events";
 // não exija mudar quem publica ou assina eventos, só a implementação aqui
 // dentro.
 
-export type RealtimeTopic = "kitchen" | "pdv" | `comanda:${string}`;
+// "kitchen"/"pdv" são escopados por restaurante (multi-tenant — sem isso,
+// a cozinha de um restaurante veria pedidos de outro). O tópico de comanda
+// já é escopado por si só (comandaId é único), sem precisar do restaurantId
+// junto.
+export type RealtimeTopic =
+  | `kitchen:${string}`
+  | `pdv:${string}`
+  | `comanda:${string}`;
 
 declare global {
   var __realtimeBus: EventEmitter | undefined;

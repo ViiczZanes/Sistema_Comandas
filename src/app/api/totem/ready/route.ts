@@ -9,15 +9,25 @@ import { prisma } from "@/lib/prisma";
 // da cozinha): "preparando" cobre Novo/Aceito/Preparando — pro cliente,
 // tanto faz se a cozinha já viu o pedido ou já começou a fazer, o que
 // importa é que ainda não ficou pronto. "prontos" é só READY.
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const restaurantId = searchParams.get("restaurantId");
+  if (!restaurantId) {
+    return NextResponse.json({ error: "restaurantId é obrigatório." }, { status: 400 });
+  }
+
   const [preparing, ready] = await Promise.all([
     prisma.order.findMany({
-      where: { channel: "KIOSK", status: { in: ["NEW", "ACCEPTED", "PREPARING"] } },
+      where: {
+        restaurantId,
+        channel: "KIOSK",
+        status: { in: ["NEW", "ACCEPTED", "PREPARING"] },
+      },
       orderBy: { createdAt: "asc" },
       select: { id: true, number: true, updatedAt: true },
     }),
     prisma.order.findMany({
-      where: { channel: "KIOSK", status: "READY" },
+      where: { restaurantId, channel: "KIOSK", status: "READY" },
       orderBy: { updatedAt: "asc" },
       select: { id: true, number: true, updatedAt: true },
     }),

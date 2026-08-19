@@ -7,6 +7,7 @@ import { checkCoupon } from "@/lib/coupons";
 import { getPaymentProvider } from "@/lib/payments/provider";
 
 const bodySchema = z.object({
+  restaurantId: z.string().min(1),
   items: z.array(orderItemSchema).min(1),
   method: z.enum(["PIX", "CREDIT", "DEBIT"]),
   couponCode: z.string().trim().min(1).optional(),
@@ -15,9 +16,17 @@ const bodySchema = z.object({
 // Cliente monta o carrinho no totem e aperta "Pagar" — isso só cria a
 // sessão de checkout e devolve o QR de pagamento (se for PIX). O pedido em
 // si (que a cozinha vê) só nasce quando o pagamento é confirmado — ver
-// GET /api/totem/checkout/[id].
+// GET /api/totem/checkout/[id]. `restaurantId` vem do totem físico
+// (resolvido por slug em /totem/[slug] — ver src/app/totem/[slug]).
 export async function POST(request: Request) {
-  const settings = await getSettings();
+  const json = await request.json().catch(() => null);
+  const parsed = bodySchema.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+  }
+  const { restaurantId } = parsed.data;
+
+  const settings = await getSettings(restaurantId);
   if (!settings.kioskEnabled) {
     return NextResponse.json(
       { error: "O totem não está ativado neste restaurante." },
@@ -25,13 +34,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const json = await request.json().catch(() => null);
-  const parsed = bodySchema.safeParse(json);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
-  }
-
-  const priced = await priceOrderItems(parsed.data.items);
+  const priced = await priceOrderItems(parsed.data.items, restaurantId);
   if (!priced.ok) {
     return NextResponse.json({ error: priced.error }, { status: 409 });
   }
@@ -44,7 +47,7 @@ export async function POST(request: Request) {
   let couponId: string | null = null;
   let discountCents = 0;
   if (parsed.data.couponCode) {
-    const coupon = await checkCoupon(parsed.data.couponCode, priced.totalCents);
+    const coupon = await checkCoupon(parsed.data.couponCode, priced.totalCents, restaurantId);
     if (!coupon.ok) {
       return NextResponse.json({ error: coupon.error }, { status: 409 });
     }
@@ -55,6 +58,7 @@ export async function POST(request: Request) {
 
   const checkout = await prisma.checkout.create({
     data: {
+      restaurantId,
       cartJson: JSON.stringify(priced.items),
       subtotalCents: priced.totalCents,
       amountCents,

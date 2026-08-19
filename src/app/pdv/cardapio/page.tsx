@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SoldOutList } from "./SoldOutList";
 
 export default async function PdvCardapioPage() {
+  const user = await requireUser(["ADMIN", "WAITER"]);
   const products = await prisma.product.findMany({
-    where: { active: true },
+    where: { restaurantId: user.restaurantId, active: true },
     orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }, { name: "asc" }],
     include: { category: true },
   });

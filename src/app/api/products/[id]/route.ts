@@ -29,12 +29,23 @@ export async function PATCH(
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const before = await prisma.product.findUnique({ where: { id } });
+  const before = await prisma.product.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+  });
   if (!before) {
     return NextResponse.json(
       { error: "Produto não encontrado." },
       { status: 404 }
     );
+  }
+
+  if (parsed.data.categoryId) {
+    const category = await prisma.category.findFirst({
+      where: { id: parsed.data.categoryId, restaurantId: user.restaurantId },
+    });
+    if (!category) {
+      return NextResponse.json({ error: "Categoria não encontrada." }, { status: 404 });
+    }
   }
 
   const product = await prisma.product
@@ -62,6 +73,7 @@ export async function PATCH(
   }
   if (changes.length > 0) {
     logAction({
+      restaurantId: user.restaurantId,
       userId: user.id,
       action: "product.update",
       entityType: "Product",
@@ -82,19 +94,26 @@ export async function DELETE(
 
   const { id } = await ctx.params;
 
-  const before = await prisma.product.findUnique({ where: { id } });
+  const before = await prisma.product.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+  });
+  if (!before) {
+    return NextResponse.json(
+      { error: "Produto não encontrado." },
+      { status: 404 }
+    );
+  }
 
   try {
     await prisma.product.delete({ where: { id } });
-    if (before) {
-      logAction({
-        userId: user.id,
-        action: "product.delete",
-        entityType: "Product",
-        entityId: id,
-        summary: `Excluiu o produto "${before.name}"`,
-      });
-    }
+    logAction({
+      restaurantId: user.restaurantId,
+      userId: user.id,
+      action: "product.delete",
+      entityType: "Product",
+      entityId: id,
+      summary: `Excluiu o produto "${before.name}"`,
+    });
   } catch {
     // Produto já usado em pedidos: preferimos desativar a excluir, para não
     // perder o histórico. Marca como inativo em vez de falhar sem explicar.
@@ -103,6 +122,7 @@ export async function DELETE(
       data: { active: false },
     });
     logAction({
+      restaurantId: user.restaurantId,
       userId: user.id,
       action: "product.update",
       entityType: "Product",

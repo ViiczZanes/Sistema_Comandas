@@ -4,7 +4,7 @@ import { requireApiUser } from "@/lib/apiAuth";
 import type { OrderStatus } from "@/generated/prisma/client";
 
 export async function GET(request: Request) {
-  const { error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
@@ -22,6 +22,7 @@ export async function GET(request: Request) {
 
   const orders = await prisma.order.findMany({
     where: {
+      restaurantId: user.restaurantId,
       ...statusFilter,
       ...(comandaId ? { comandaId } : {}),
       ...(tableId ? { tableId } : {}),

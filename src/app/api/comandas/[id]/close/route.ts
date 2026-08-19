@@ -27,7 +27,9 @@ export async function POST(
   let balanceCents = 0;
 
   const comanda = await prisma.$transaction(async (tx) => {
-    const existing = await tx.comanda.findUnique({ where: { id } });
+    const existing = await tx.comanda.findFirst({
+      where: { id, restaurantId: user.restaurantId },
+    });
     if (!existing) return null;
 
     const [orders, payments] = await Promise.all([
@@ -76,9 +78,10 @@ export async function POST(
     );
   }
 
-  publish("pdv", { type: "comanda-updated", comandaId: comanda.id });
+  publish(`pdv:${user.restaurantId}`, { type: "comanda-updated", comandaId: comanda.id });
 
   logAction({
+    restaurantId: user.restaurantId,
     userId: user.id,
     action: "comanda.force_close",
     entityType: "Comanda",

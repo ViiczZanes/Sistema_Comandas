@@ -4,10 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
   if (error) return error;
 
   const tables = await prisma.restaurantTable.findMany({
+    where: { restaurantId: user.restaurantId },
     orderBy: { number: "asc" },
   });
   return NextResponse.json(tables);
@@ -18,7 +19,7 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const json = await request.json().catch(() => null);
@@ -28,7 +29,9 @@ export async function POST(request: Request) {
   }
 
   const existing = await prisma.restaurantTable.findUnique({
-    where: { number: parsed.data.number },
+    where: {
+      restaurantId_number: { restaurantId: user.restaurantId, number: parsed.data.number },
+    },
   });
   if (existing) {
     return NextResponse.json(
@@ -38,7 +41,7 @@ export async function POST(request: Request) {
   }
 
   const table = await prisma.restaurantTable.create({
-    data: { number: parsed.data.number },
+    data: { restaurantId: user.restaurantId, number: parsed.data.number },
   });
 
   return NextResponse.json(table, { status: 201 });

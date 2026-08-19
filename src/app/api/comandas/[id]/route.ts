@@ -6,13 +6,16 @@ export async function DELETE(
   _request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const { id } = await ctx.params;
 
+  let count: number;
   try {
-    await prisma.comanda.delete({ where: { id } });
+    ({ count } = await prisma.comanda.deleteMany({
+      where: { id, restaurantId: user.restaurantId },
+    }));
   } catch {
     return NextResponse.json(
       {
@@ -21,6 +24,10 @@ export async function DELETE(
       },
       { status: 409 }
     );
+  }
+
+  if (count === 0) {
+    return NextResponse.json({ error: "Comanda não encontrada." }, { status: 404 });
   }
 
   return NextResponse.json({ ok: true });

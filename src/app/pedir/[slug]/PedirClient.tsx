@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ShoppingBag,
   ChevronDown,
+  ChevronLeft,
   Minus,
   Plus,
   Trash2,
@@ -17,7 +18,10 @@ import {
   Tag,
   PartyPopper,
   AlertCircle,
-  ChevronLeft,
+  Truck,
+  CalendarClock,
+  MapPin,
+  Clock3,
 } from "lucide-react";
 import { formatCents } from "@/lib/money";
 import { randomId } from "@/lib/id";
@@ -26,6 +30,7 @@ import { Input } from "@/components/ui/Input";
 import { Logo } from "@/components/Logo";
 import { cn } from "@/lib/cn";
 
+type Channel = "DELIVERY" | "SCHEDULED";
 type PaymentMethod = "PIX" | "CREDIT" | "DEBIT";
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Smartphone }[] = [
@@ -68,20 +73,37 @@ type CartLine = {
   observation?: string;
 };
 
-type Screen = "idle" | "order" | "cart" | "method" | "paying" | "done" | "error";
+type Screen =
+  | "channelPick"
+  | "order"
+  | "cart"
+  | "detail"
+  | "method"
+  | "paying"
+  | "done"
+  | "error";
 
-const IDLE_RESET_MS = 45_000; // volta pra tela ociosa se ninguém mexer
-
-export function TotemClient({
+export function PedirClient({
+  restaurantId,
   categories,
   restaurantName,
   logoUrl,
+  deliveryEnabled,
+  scheduledPickupEnabled,
 }: {
+  restaurantId: string;
   categories: CategoryDTO[];
   restaurantName: string;
   logoUrl: string | null;
+  deliveryEnabled: boolean;
+  scheduledPickupEnabled: boolean;
 }) {
-  const [screen, setScreen] = useState<Screen>("idle");
+  const bothEnabled = deliveryEnabled && scheduledPickupEnabled;
+  const [channel, setChannel] = useState<Channel | null>(
+    bothEnabled ? null : deliveryEnabled ? "DELIVERY" : "SCHEDULED"
+  );
+  const [screen, setScreen] = useState<Screen>(bothEnabled ? "channelPick" : "order");
+
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [openProduct, setOpenProduct] = useState<string | null>(null);
@@ -99,6 +121,11 @@ export function TotemClient({
   const [couponError, setCouponError] = useState<string | null>(null);
   const [applyingCoupon, setApplyingCoupon] = useState(false);
 
+  const [address, setAddress] = useState("");
+  const [slots, setSlots] = useState<string[] | null>(null);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState<string | null>(null);
+
   const subtotal = cart.reduce((a, l) => a + l.unitPriceCents * l.quantity, 0);
   const discountCents = coupon ? Math.min(coupon.discountCents, subtotal) : 0;
   const total = Math.max(subtotal - discountCents, 0);
@@ -109,10 +136,12 @@ export function TotemClient({
     setApplyingCoupon(true);
     setCouponError(null);
     try {
+      // Reaproveita a mesma rota de preview do totem — validação de cupom
+      // não depende de canal (ver src/lib/coupons.ts).
       const res = await fetch("/api/totem/coupon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponInput.trim(), subtotalCents: subtotal }),
+        body: JSON.stringify({ code: couponInput.trim(), subtotalCents: subtotal, restaurantId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -134,22 +163,9 @@ export function TotemClient({
     setCouponError(null);
   }
 
-  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function bumpIdleTimer() {
-    if (resetTimer.current) clearTimeout(resetTimer.current);
-    if (screen === "idle" || screen === "paying" || screen === "done") return;
-    resetTimer.current = setTimeout(() => resetAll(), IDLE_RESET_MS);
-  }
-  useEffect(() => {
-    bumpIdleTimer();
-    return () => {
-      if (resetTimer.current) clearTimeout(resetTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, cart]);
-
   function resetAll() {
-    setScreen("idle");
+    setScreen(bothEnabled ? "channelPick" : "order");
+    setChannel(bothEnabled ? null : deliveryEnabled ? "DELIVERY" : "SCHEDULED");
     setCart([]);
     setOpenProduct(null);
     setErrorMessage(null);
@@ -158,6 +174,8 @@ export function TotemClient({
     setCoupon(null);
     setCouponInput("");
     setCouponError(null);
+    setAddress("");
+    setScheduledFor(null);
   }
 
   function addToCart(line: Omit<CartLine, "key">) {
@@ -177,16 +195,41 @@ export function TotemClient({
     );
   }
 
+  // Busca a grade de horários só quando entra na etapa de detalhe do
+  // canal SCHEDULED — evita chamar a rota à toa nos outros passos.
+  useEffect(() => {
+    if (screen !== "detail" || channel !== "SCHEDULED") return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadingSlots(true);
+    fetch("/api/pedir/slots")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setSlots(data.slots ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, channel]);
+
   async function startPayment(method: PaymentMethod) {
+    if (!channel) return;
     setScreen("paying");
     setErrorMessage(null);
     try {
-      const res = await fetch("/api/totem/checkout", {
+      const res = await fetch("/api/pedir/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          restaurantId,
           method,
           couponCode: coupon?.code,
+          channel,
+          deliveryAddress: channel === "DELIVERY" ? address.trim() : undefined,
+          scheduledFor: channel === "SCHEDULED" ? scheduledFor : undefined,
           items: cart.map((l) => ({
             productId: l.productId,
             quantity: l.quantity,
@@ -208,12 +251,11 @@ export function TotemClient({
     }
   }
 
-  // polling do status do pagamento enquanto na tela "paying"
   useEffect(() => {
     if (screen !== "paying" || !checkout) return;
     let cancelled = false;
     const interval = setInterval(async () => {
-      const res = await fetch(`/api/totem/checkout/${checkout.checkoutId}`);
+      const res = await fetch(`/api/pedir/checkout/${checkout.checkoutId}`);
       const data = await res.json().catch(() => null);
       if (cancelled || !data) return;
       if (data.status === "approved") {
@@ -234,25 +276,43 @@ export function TotemClient({
     };
   }, [screen, checkout]);
 
-  // volta sozinho pra tela ociosa depois de confirmar
-  useEffect(() => {
-    if (screen !== "done") return;
-    const t = setTimeout(() => resetAll(), 8000);
-    return () => clearTimeout(t);
-  }, [screen]);
-
-  if (screen === "idle") {
+  if (screen === "channelPick") {
     return (
-      <button
-        onClick={() => setScreen("order")}
-        className="flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-stone-900 text-white"
-      >
-        <Logo size="lg" logoUrl={logoUrl} name={restaurantName} light />
-        <div className="animate-pulse text-center">
-          <p className="text-3xl font-black">Toque para pedir</p>
-          <p className="mt-2 text-stone-400">Peça e pague por aqui — retire no balcão</p>
+      <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-stone-50 px-6 text-center">
+        <Logo size="md" logoUrl={logoUrl} name={restaurantName} />
+        <div>
+          <h1 className="text-2xl font-bold text-stone-900">Como você quer receber?</h1>
+          <p className="mt-1 text-stone-500">Escolha uma opção pra continuar.</p>
         </div>
-      </button>
+        <div className="flex w-full max-w-sm flex-col gap-3">
+          <button
+            onClick={() => {
+              setChannel("DELIVERY");
+              setScreen("order");
+            }}
+            className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-left shadow-sm hover:border-brand-300 hover:bg-brand-50"
+          >
+            <Truck className="h-6 w-6 shrink-0 text-brand-600" />
+            <div>
+              <p className="text-lg font-semibold text-stone-900">Entrega</p>
+              <p className="text-sm text-stone-500">Receba no seu endereço</p>
+            </div>
+          </button>
+          <button
+            onClick={() => {
+              setChannel("SCHEDULED");
+              setScreen("order");
+            }}
+            className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-left shadow-sm hover:border-brand-300 hover:bg-brand-50"
+          >
+            <CalendarClock className="h-6 w-6 shrink-0 text-brand-600" />
+            <div>
+              <p className="text-lg font-semibold text-stone-900">Retirada agendada</p>
+              <p className="text-sm text-stone-500">Escolha um horário e retire no balcão</p>
+            </div>
+          </button>
+        </div>
+      </main>
     );
   }
 
@@ -261,12 +321,22 @@ export function TotemClient({
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-emerald-600 px-6 text-center text-white">
         <PartyPopper className="h-16 w-16" />
         <div>
-          <p className="text-lg font-semibold text-emerald-100">Sua senha é</p>
-          <p className="text-8xl font-black tabular-nums">#{orderNumber}</p>
+          <p className="text-lg font-semibold text-emerald-100">Pedido confirmado</p>
+          <p className="text-6xl font-black tabular-nums">#{orderNumber}</p>
         </div>
         <p className="max-w-sm text-emerald-100">
-          Aguarde ser chamado no balcão. Acompanhe no painel de senhas.
+          {channel === "DELIVERY"
+            ? "Seu pedido já está sendo preparado — chega em cerca de 40 minutos."
+            : scheduledFor
+              ? `Retire no balcão às ${formatTime(scheduledFor)}.`
+              : "Retire no balcão no horário combinado."}
         </p>
+        <button
+          onClick={resetAll}
+          className="text-sm font-medium text-emerald-100 underline underline-offset-4"
+        >
+          Fazer novo pedido
+        </button>
       </main>
     );
   }
@@ -326,7 +396,7 @@ export function TotemClient({
             </div>
             <div>
               <p className="text-2xl font-bold">
-                Insira ou aproxime o cartão de {checkout?.method === "CREDIT" ? "crédito" : "débito"}
+                Confirme o pagamento no cartão de {checkout?.method === "CREDIT" ? "crédito" : "débito"}
               </p>
               <p className="mt-1 text-stone-400">
                 Total: {formatCents(checkout?.amountCents ?? total)}
@@ -335,12 +405,6 @@ export function TotemClient({
           </>
         )}
         <p className="text-sm text-stone-500">Aguardando confirmação do pagamento...</p>
-        <button
-          onClick={() => setScreen("cart")}
-          className="text-sm font-medium text-stone-400 underline underline-offset-4"
-        >
-          Cancelar e voltar
-        </button>
       </main>
     );
   }
@@ -365,26 +429,98 @@ export function TotemClient({
           ))}
         </div>
         <button
-          onClick={() => setScreen("cart")}
+          onClick={() => setScreen("detail")}
           className="text-sm font-medium text-stone-400 underline underline-offset-4"
         >
-          Voltar ao carrinho
+          Voltar
         </button>
+      </main>
+    );
+  }
+
+  if (screen === "detail") {
+    const canContinue = channel === "DELIVERY" ? address.trim().length >= 5 : !!scheduledFor;
+    return (
+      <main className="flex min-h-screen flex-col bg-stone-50">
+        <div className="flex items-center gap-3 border-b border-stone-200 bg-white px-6 py-4">
+          <button
+            onClick={() => setScreen("cart")}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <h1 className="text-xl font-bold text-stone-900">
+            {channel === "DELIVERY" ? "Endereço de entrega" : "Horário de retirada"}
+          </h1>
+        </div>
+
+        <div className="flex-1 space-y-4 px-6 py-6">
+          {channel === "DELIVERY" ? (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                <MapPin className="h-3.5 w-3.5" />
+                Endereço completo
+              </label>
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={4}
+                placeholder="Rua, número, bairro, complemento, ponto de referência..."
+                className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 shadow-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
+              />
+            </div>
+          ) : loadingSlots ? (
+            <p className="py-12 text-center text-stone-400">Carregando horários...</p>
+          ) : slots && slots.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {slots.map((slot) => (
+                <button
+                  key={slot}
+                  onClick={() => setScheduledFor(slot)}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-semibold",
+                    scheduledFor === slot
+                      ? "border-brand-600 bg-brand-600 text-white"
+                      : "border-stone-300 bg-white text-stone-700"
+                  )}
+                >
+                  <Clock3 className="h-3.5 w-3.5" />
+                  {formatTime(slot)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="py-12 text-center text-stone-400">
+              Nenhum horário disponível no momento.
+            </p>
+          )}
+        </div>
+
+        <div className="border-t border-stone-200 bg-white px-6 py-5">
+          <Button
+            size="lg"
+            className="w-full"
+            disabled={!canContinue}
+            onClick={() => setScreen("method")}
+          >
+            Continuar
+          </Button>
+        </div>
       </main>
     );
   }
 
   // screen === "order" | "cart"
   return (
-    <div className="flex min-h-screen flex-col bg-stone-50" onClick={bumpIdleTimer}>
+    <div className="flex min-h-screen flex-col bg-stone-50">
       <header className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4">
         <Logo size="md" logoUrl={logoUrl} name={restaurantName} />
-        <button
-          onClick={resetAll}
-          className="text-sm font-semibold text-stone-500 hover:text-stone-700"
-        >
-          Cancelar pedido
-        </button>
+        {channel && (
+          <span className="flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700">
+            {channel === "DELIVERY" ? <Truck className="h-3.5 w-3.5" /> : <CalendarClock className="h-3.5 w-3.5" />}
+            {channel === "DELIVERY" ? "Entrega" : "Retirada agendada"}
+          </span>
+        )}
       </header>
 
       {screen === "order" && (
@@ -411,7 +547,7 @@ export function TotemClient({
               {categories
                 .find((c) => c.id === activeCategory)
                 ?.products.map((product) => (
-                  <TotemProductCard
+                  <PedirProductCard
                     key={product.id}
                     product={product}
                     open={openProduct === product.id}
@@ -553,9 +689,9 @@ export function TotemClient({
               size="lg"
               className="w-full"
               disabled={cart.length === 0}
-              onClick={() => setScreen("method")}
+              onClick={() => setScreen("detail")}
             >
-              Pagar {formatCents(total)}
+              Continuar · {formatCents(total)}
             </Button>
           </div>
         </div>
@@ -564,7 +700,11 @@ export function TotemClient({
   );
 }
 
-function TotemProductCard({
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function PedirProductCard({
   product,
   open,
   onToggle,

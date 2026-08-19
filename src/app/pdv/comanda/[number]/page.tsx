@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Receipt } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { PdvAutoRefresh } from "@/components/PdvAutoRefresh";
 import { ComandaCard } from "@/components/ComandaCard";
@@ -16,21 +16,24 @@ export default async function ComandaCashierPage({
 }: {
   params: Promise<{ number: string }>;
 }) {
+  const user = await requireUser(["ADMIN", "WAITER"]);
   const { number } = await params;
   const parsedNumber = Number(number);
   if (!Number.isInteger(parsedNumber)) notFound();
 
-  const comandaBase = await prisma.comanda.findUnique({
-    where: { number: parsedNumber },
+  const comandaBase = await prisma.comanda.findFirst({
+    where: { restaurantId: user.restaurantId, number: parsedNumber },
     include: { currentTable: true },
   });
   if (!comandaBase) notFound();
 
-  const [comanda, otherTables, user, settings] = await Promise.all([
+  const [comanda, otherTables, settings] = await Promise.all([
     attachCurrentRound(comandaBase),
-    prisma.restaurantTable.findMany({ orderBy: { number: "asc" } }),
-    getCurrentUser(),
-    getSettings(),
+    prisma.restaurantTable.findMany({
+      where: { restaurantId: user.restaurantId },
+      orderBy: { number: "asc" },
+    }),
+    getSettings(user.restaurantId),
   ]);
 
   return (
@@ -70,7 +73,7 @@ export default async function ComandaCashierPage({
       <ComandaCard
         comanda={comanda}
         otherTables={otherTables}
-        isAdmin={user?.role === "ADMIN"}
+        isAdmin={user.role === "ADMIN"}
         serviceFeeEnabled={settings.serviceFeeEnabled}
         serviceFeePercent={settings.serviceFeePercent}
       />

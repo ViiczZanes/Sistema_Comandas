@@ -1,15 +1,10 @@
-import { getSettings } from "@/lib/settings";
 import { LoginForm } from "./LoginForm";
 
-// Sem isso o Next prerenderiza essa página como estática no build (ela não
-// lê cookies/headers, então nada sinaliza "dinâmica" por padrão) — daí a
-// marca configurada em Configurações só apareceria aqui depois de um novo
-// build. Login é a porta de entrada, então precisa refletir a marca atual.
-export const dynamic = "force-dynamic";
-
-export default async function LoginPage() {
-  const settings = await getSettings();
-  return (
-    <LoginForm restaurantName={settings.restaurantName} logoUrl={settings.logoUrl} />
-  );
+// Login é compartilhado por TODOS os restaurantes (multi-tenant) — não dá
+// pra mostrar a marca de um restaurante específico aqui, já que a pessoa
+// ainda não disse quem é. Mostra a identidade da plataforma; a marca do
+// próprio restaurante aparece depois, já dentro de /admin, /pdv ou
+// /kitchen.
+export default function LoginPage() {
+  return <LoginForm restaurantName="Comandas" logoUrl={null} />;
 }

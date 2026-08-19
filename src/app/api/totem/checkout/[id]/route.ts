@@ -58,9 +58,10 @@ export async function GET(
     : null;
 
   const result = await prisma.$transaction(async (tx) => {
-    const number = await nextOrderNumber(tx);
+    const number = await nextOrderNumber(tx, checkout.restaurantId);
     const order = await tx.order.create({
       data: {
+        restaurantId: checkout.restaurantId,
         number,
         channel: "KIOSK",
         totalCents: checkout.amountCents,
@@ -89,6 +90,7 @@ export async function GET(
 
     await tx.payment.create({
       data: {
+        restaurantId: checkout.restaurantId,
         orderId: order.id,
         method: checkout.method,
         amountCents: checkout.amountCents,
@@ -110,8 +112,8 @@ export async function GET(
     return order;
   });
 
-  publish("kitchen", { type: "order-created", orderId: result.id });
-  publish("pdv", { type: "order-created", orderId: result.id });
+  publish(`kitchen:${checkout.restaurantId}`, { type: "order-created", orderId: result.id });
+  publish(`pdv:${checkout.restaurantId}`, { type: "order-created", orderId: result.id });
 
   return NextResponse.json({ status: "approved", orderNumber: result.number });
 }

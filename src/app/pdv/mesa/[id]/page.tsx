@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Ticket } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { TABLE_STATUS_LABEL } from "@/lib/statusLabels";
 import { ComandaCard } from "@/components/ComandaCard";
@@ -23,28 +23,30 @@ export default async function TableDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const user = await requireUser(["ADMIN", "WAITER"]);
   const { id } = await params;
 
-  const table = await prisma.restaurantTable.findUnique({ where: { id } });
+  const table = await prisma.restaurantTable.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+  });
   if (!table) notFound();
 
-  const [comandasBase, otherTables, user, settings] = await Promise.all([
+  const [comandasBase, otherTables, settings] = await Promise.all([
     prisma.comanda.findMany({
-      where: { currentTableId: table.id },
+      where: { restaurantId: user.restaurantId, currentTableId: table.id },
       orderBy: { number: "asc" },
     }),
     prisma.restaurantTable.findMany({
-      where: { id: { not: table.id } },
+      where: { restaurantId: user.restaurantId, id: { not: table.id } },
       orderBy: { number: "asc" },
     }),
-    getCurrentUser(),
-    getSettings(),
+    getSettings(user.restaurantId),
   ]);
 
   const comandas = await Promise.all(comandasBase.map(attachCurrentRound));
 
   const openComandas = await prisma.comanda.findMany({
-    where: { currentTableId: null, status: "OPEN" },
+    where: { restaurantId: user.restaurantId, currentTableId: null, status: "OPEN" },
     orderBy: { number: "asc" },
     select: { id: true, number: true },
   });
@@ -78,7 +80,7 @@ export default async function TableDetailPage({
               key={comanda.id}
               comanda={comanda}
               otherTables={otherTables}
-              isAdmin={user?.role === "ADMIN"}
+              isAdmin={user.role === "ADMIN"}
               serviceFeeEnabled={settings.serviceFeeEnabled}
               serviceFeePercent={settings.serviceFeePercent}
             />

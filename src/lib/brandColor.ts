@@ -24,6 +24,13 @@ const BASE_STEPS: { step: number; l: number; c: number; h: number }[] = [
 ];
 const BASE_HUE = 30; // matiz de referência (brand-600) usado pro offset
 
+// Cor padrão da plataforma (mesmo valor do default de Settings.brandColorHex
+// no schema) — usada pelo layout raiz, compartilhado por todo restaurante
+// (inclusive por telas que ainda não sabem a qual restaurante pertencem:
+// "/", "/login", "/signup"), como cor de marca antes de qualquer área
+// específica de um restaurante injetar a própria.
+export const DEFAULT_BRAND_COLOR_HEX = "#c1401f";
+
 function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }

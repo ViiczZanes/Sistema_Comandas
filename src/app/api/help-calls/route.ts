@@ -5,11 +5,11 @@ import { requireApiUser } from "@/lib/apiAuth";
 // Lista os chamados de ajuda ainda não resolvidos, mais antigo primeiro
 // (quem está esperando há mais tempo aparece no topo do PDV).
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN", "WAITER"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER"]);
   if (error) return error;
 
   const helpCalls = await prisma.helpCall.findMany({
-    where: { resolvedAt: null },
+    where: { restaurantId: user.restaurantId, resolvedAt: null },
     orderBy: { createdAt: "asc" },
     include: {
       table: { select: { number: true } },

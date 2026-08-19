@@ -34,7 +34,7 @@ export async function POST(
     return result;
   });
 
-  publish("pdv", { type: "comanda-updated", comandaId: updated.id });
+  publish(`pdv:${updated.restaurantId}`, { type: "comanda-updated", comandaId: updated.id });
 
   return NextResponse.json(updated);
 }

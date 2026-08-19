@@ -7,6 +7,7 @@ import {
   Settings as SettingsIcon,
   Tag,
 } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AdminPageHeader } from "@/components/AdminPageHeader";
 import { Card } from "@/components/ui/Card";
@@ -36,7 +37,9 @@ function formatWhen(date: Date): string {
 }
 
 export default async function AuditLogPage() {
+  const user = await requireUser(["ADMIN"]);
   const logs = await prisma.auditLog.findMany({
+    where: { restaurantId: user.restaurantId },
     orderBy: { createdAt: "desc" },
     take: 300,
     include: { user: { select: { name: true } } },

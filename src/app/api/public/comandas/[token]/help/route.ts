@@ -43,7 +43,7 @@ export async function POST(
     const table = await prisma.restaurantTable.findUnique({
       where: { qrToken: tableToken },
     });
-    if (!table) {
+    if (!table || table.restaurantId !== comanda.restaurantId) {
       return NextResponse.json({ error: "Mesa não encontrada." }, { status: 404 });
     }
     tableId = table.id;
@@ -61,10 +61,10 @@ export async function POST(
   }
 
   const helpCall = await prisma.helpCall.create({
-    data: { comandaId: comanda.id, tableId },
+    data: { restaurantId: comanda.restaurantId, comandaId: comanda.id, tableId },
   });
 
-  publish("pdv", { type: "help-requested", helpCallId: helpCall.id });
+  publish(`pdv:${comanda.restaurantId}`, { type: "help-requested", helpCallId: helpCall.id });
 
   return NextResponse.json(helpCall, { status: 201 });
 }

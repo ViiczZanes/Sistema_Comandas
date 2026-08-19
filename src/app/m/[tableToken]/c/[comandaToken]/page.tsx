@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { brandScaleCss } from "@/lib/brandColor";
 import { MenuClient } from "./MenuClient";
 
 export default async function OrderPage({
@@ -19,6 +20,14 @@ export default async function OrderPage({
     where: { token: comandaToken },
   });
   if (!comanda) notFound();
+
+  // Mesa e comanda são resolvidas cada uma por seu próprio token global,
+  // sem saber a priori se são do mesmo restaurante — precisa checar
+  // explicitamente antes de continuar (senão alguém poderia montar uma URL
+  // combinando o QR de mesa de um restaurante com o QR de comanda de
+  // outro). Isso nunca acontece organicamente (os dois QR Codes impressos
+  // são sempre do mesmo restaurante), só é possível digitando à mão.
+  if (comanda.restaurantId !== table.restaurantId) notFound();
 
   if (comanda.currentTableId && comanda.currentTableId !== table.id) {
     return (
@@ -43,10 +52,10 @@ export default async function OrderPage({
     );
   }
 
-  const settings = await getSettings();
+  const settings = await getSettings(table.restaurantId);
 
   const categories = await prisma.category.findMany({
-    where: { active: true },
+    where: { restaurantId: table.restaurantId, active: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     include: {
       products: {
@@ -63,14 +72,17 @@ export default async function OrderPage({
   });
 
   return (
-    <MenuClient
-      tableToken={tableToken}
-      comandaToken={comandaToken}
-      tableNumber={table.number}
-      comandaNumber={comanda.number}
-      categories={categories.filter((c) => c.products.length > 0)}
-      restaurantName={settings.restaurantName}
-      logoUrl={settings.logoUrl}
-    />
+    <>
+      <style dangerouslySetInnerHTML={{ __html: brandScaleCss(settings.brandColorHex) }} />
+      <MenuClient
+        tableToken={tableToken}
+        comandaToken={comandaToken}
+        tableNumber={table.number}
+        comandaNumber={comanda.number}
+        categories={categories.filter((c) => c.products.length > 0)}
+        restaurantName={settings.restaurantName}
+        logoUrl={settings.logoUrl}
+      />
+    </>
   );
 }

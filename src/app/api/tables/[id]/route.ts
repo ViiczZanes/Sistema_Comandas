@@ -11,7 +11,7 @@ export async function PATCH(
   request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const { id } = await ctx.params;
@@ -21,14 +21,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const table = await prisma.restaurantTable
-    .update({ where: { id }, data: parsed.data })
-    .catch(() => null);
+  const { count } = await prisma.restaurantTable
+    .updateMany({
+      where: { id, restaurantId: user.restaurantId },
+      data: parsed.data,
+    })
+    .catch(() => ({ count: 0 }));
 
-  if (!table) {
+  if (count === 0) {
     return NextResponse.json({ error: "Mesa não encontrada." }, { status: 404 });
   }
 
+  const table = await prisma.restaurantTable.findUnique({ where: { id } });
   return NextResponse.json(table);
 }
 
@@ -36,13 +40,16 @@ export async function DELETE(
   _request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const { id } = await ctx.params;
 
+  let count: number;
   try {
-    await prisma.restaurantTable.delete({ where: { id } });
+    ({ count } = await prisma.restaurantTable.deleteMany({
+      where: { id, restaurantId: user.restaurantId },
+    }));
   } catch {
     return NextResponse.json(
       {
@@ -51,6 +58,10 @@ export async function DELETE(
       },
       { status: 409 }
     );
+  }
+
+  if (count === 0) {
+    return NextResponse.json({ error: "Mesa não encontrada." }, { status: 404 });
   }
 
   return NextResponse.json({ ok: true });

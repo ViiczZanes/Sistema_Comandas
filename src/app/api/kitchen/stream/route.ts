@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // vez que um pedido é criado ou muda de status (seção 11 do documento —
 // "o pedido deve aparecer na cozinha sem precisar atualizar a página").
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN", "KITCHEN"]);
+  const { user, error } = await requireApiUser(["ADMIN", "KITCHEN"]);
   if (error) return error;
 
   const encoder = new TextEncoder();
@@ -18,7 +18,7 @@ export async function GET() {
     start(controller) {
       controller.enqueue(encoder.encode(`: connected\n\n`));
 
-      unsubscribe = subscribe("kitchen", (data) => {
+      unsubscribe = subscribe(`kitchen:${user.restaurantId}`, (data) => {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
         );

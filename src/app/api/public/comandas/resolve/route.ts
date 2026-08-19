@@ -31,7 +31,9 @@ export async function POST(request: Request) {
   }
 
   const comanda = await prisma.comanda.findUnique({
-    where: { number: parsed.data.number },
+    where: {
+      restaurantId_number: { restaurantId: table.restaurantId, number: parsed.data.number },
+    },
   });
   if (!comanda || comanda.status !== "OPEN") {
     return NextResponse.json(

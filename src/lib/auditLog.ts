@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 // isso é fire-and-forget com catch silencioso, chamado depois da ação já
 // ter sido concluída.
 export async function logAction(entry: {
+  restaurantId: string;
   userId: string | null;
   action: string;
   entityType: string;
@@ -20,6 +21,7 @@ export async function logAction(entry: {
   try {
     await prisma.auditLog.create({
       data: {
+        restaurantId: entry.restaurantId,
         userId: entry.userId,
         action: entry.action,
         entityType: entry.entityType,

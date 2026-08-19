@@ -12,10 +12,11 @@ const ROLE_LABEL = {
 } as const;
 
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const users = await prisma.user.findMany({
+    where: { restaurantId: user.restaurantId },
     select: {
       id: true,
       name: true,
@@ -46,6 +47,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
+  // E-mail é único globalmente na plataforma, não só neste restaurante
+  // (decisão de arquitetura — ver schema.prisma, model User).
   const existing = await prisma.user.findUnique({
     where: { email: parsed.data.email },
   });
@@ -59,6 +62,7 @@ export async function POST(request: Request) {
   const passwordHash = await hashPassword(parsed.data.password);
   const user = await prisma.user.create({
     data: {
+      restaurantId: currentUser.restaurantId,
       name: parsed.data.name,
       email: parsed.data.email,
       role: parsed.data.role,
@@ -68,6 +72,7 @@ export async function POST(request: Request) {
   });
 
   logAction({
+    restaurantId: currentUser.restaurantId,
     userId: currentUser.id,
     action: "user.create",
     entityType: "User",

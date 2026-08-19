@@ -8,24 +8,29 @@ import {
   ChefHat,
   Wallet,
 } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { formatCents } from "@/lib/money";
 import { resolveRange } from "@/lib/dateRange";
 
 export default async function AdminOverviewPage() {
+  const user = await requireUser(["ADMIN"]);
   const { from, to } = resolveRange({ range: "today" });
+  const restaurantId = user.restaurantId;
 
   const [tables, comandas, products, categories, users, activeOrders, todayPayments] =
     await Promise.all([
-      prisma.restaurantTable.count(),
-      prisma.comanda.count(),
-      prisma.product.count({ where: { active: true } }),
-      prisma.category.count({ where: { active: true } }),
-      prisma.user.count({ where: { active: true } }),
-      prisma.order.count({ where: { status: { notIn: ["DELIVERED", "CANCELLED"] } } }),
+      prisma.restaurantTable.count({ where: { restaurantId } }),
+      prisma.comanda.count({ where: { restaurantId } }),
+      prisma.product.count({ where: { restaurantId, active: true } }),
+      prisma.category.count({ where: { restaurantId, active: true } }),
+      prisma.user.count({ where: { restaurantId, active: true } }),
+      prisma.order.count({
+        where: { restaurantId, status: { notIn: ["DELIVERED", "CANCELLED"] } },
+      }),
       prisma.payment.findMany({
-        where: { paidAt: { gte: from, lte: to } },
+        where: { restaurantId, paidAt: { gte: from, lte: to } },
         select: { amountCents: true },
       }),
     ]);

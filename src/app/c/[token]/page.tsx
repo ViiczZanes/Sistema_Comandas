@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Receipt, Clock3, ShoppingBag } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { brandScaleCss } from "@/lib/brandColor";
 import { formatCents } from "@/lib/money";
 import { COMANDA_STATUS_LABEL, COMANDA_STATUS_TONE } from "@/lib/statusLabels";
 import { Badge } from "@/components/ui/Badge";
@@ -17,11 +18,13 @@ export default async function ComandaBillPage({
 }) {
   const { token } = await params;
 
-  const [comanda, settings] = await Promise.all([
-    prisma.comanda.findUnique({ where: { token } }),
-    getSettings(),
-  ]);
+  // `token` é globalmente único (ver decisões de schema) — é ele quem
+  // resolve sozinho a qual restaurante essa comanda pertence, sem precisar
+  // de nada mais na URL. Settings só dá pra buscar DEPOIS de saber o
+  // restaurantId, então não dá pra paralelizar com a busca da comanda.
+  const comanda = await prisma.comanda.findUnique({ where: { token } });
   if (!comanda) notFound();
+  const settings = await getSettings(comanda.restaurantId);
 
   // Só o atendimento atual: a comanda é um cartão físico reaproveitado por
   // vários clientes, então pedidos/pagamentos de antes do último "abriu de
@@ -52,6 +55,9 @@ export default async function ComandaBillPage({
 
   return (
     <main className="relative mx-auto flex min-h-full w-full max-w-lg flex-1 flex-col gap-6 overflow-hidden px-4 py-8">
+      {/* Sobrescreve a cor de marca pro matiz DESTE restaurante — o layout
+          raiz só injeta a cor padrão da plataforma. */}
+      <style dangerouslySetInnerHTML={{ __html: brandScaleCss(settings.brandColorHex) }} />
       <div
         aria-hidden
         className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,theme(colors.brand.100),transparent)]"

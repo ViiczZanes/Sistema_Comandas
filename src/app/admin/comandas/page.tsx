@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { Printer } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AdminPageHeader } from "@/components/AdminPageHeader";
 import { ComandasManager } from "./ComandasManager";
 import { Button } from "@/components/ui/Button";
 
 export default async function ComandasPage() {
+  const user = await requireUser(["ADMIN"]);
   const comandas = await prisma.comanda.findMany({
+    where: { restaurantId: user.restaurantId },
     orderBy: { number: "asc" },
     include: { currentTable: true },
   });

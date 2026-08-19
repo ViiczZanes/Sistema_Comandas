@@ -13,9 +13,11 @@ const POLL_MS = 3000;
 // retirado continua sendo feito pela Cozinha (o botão "Marcar entregue"
 // que já existe lá); esta tela nunca escreve nada, só mostra.
 export function PainelClient({
+  restaurantId,
   restaurantName,
   logoUrl,
 }: {
+  restaurantId: string;
   restaurantName: string;
   logoUrl: string | null;
 }) {
@@ -35,7 +37,7 @@ export function PainelClient({
   useEffect(() => {
     let cancelled = false;
     async function poll() {
-      const res = await fetch("/api/totem/ready");
+      const res = await fetch(`/api/totem/ready?restaurantId=${restaurantId}`);
       if (cancelled || !res.ok) return;
       const data: { preparing: PanelOrder[]; ready: PanelOrder[] } = await res.json();
       const hasNewReady = data.ready.some((o) => !knownReadyIds.current.has(o.id));
@@ -56,7 +58,7 @@ export function PainelClient({
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [restaurantId]);
 
   return (
     <main className="flex min-h-screen flex-col bg-stone-950 text-white">

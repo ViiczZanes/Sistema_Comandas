@@ -38,11 +38,12 @@ export type PriceResult =
   | { ok: false; error: string };
 
 export async function priceOrderItems(
-  items: OrderItemInput[]
+  items: OrderItemInput[],
+  restaurantId: string
 ): Promise<PriceResult> {
   const productIds = [...new Set(items.map((i) => i.productId))];
   const products = await prisma.product.findMany({
-    where: { id: { in: productIds }, active: true },
+    where: { id: { in: productIds }, restaurantId, active: true },
     include: { options: true },
   });
   const productById = new Map(products.map((p) => [p.id, p]));

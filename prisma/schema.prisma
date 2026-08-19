@@ -23,13 +23,48 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Configurações do restaurante — linha única (id fixo "singleton"). Nome,
-// logo e cor de marca se propagam pro sistema inteiro (nav, telas do
-// cliente, QR Codes); o estilo do QR é usado só na geração/impressão.
+// Restaurante — a raiz do isolamento multi-tenant. Toda tabela "de dados"
+// do sistema (mesas, comandas, cardápio, pedidos, cupons, log...) carrega
+// um `restaurantId` e é sempre consultada filtrando por ele. `slug` é o
+// identificador usado nas duas telas públicas que não chegam via QR Code
+// (totem físico e /pedir remoto — ver src/app/totem/[slug],
+// src/app/pedir/[slug]): não precisa em mais lugar nenhum, porque QR Codes
+// de mesa/comanda (`qrToken`/`token`) e o id do Checkout já são únicos
+// globalmente e resolvem o restaurante sozinhos a partir do registro
+// encontrado.
+// ---------------------------------------------------------------------------
+
+model Restaurant {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  settings  Settings?
+  users     User[]
+  tables    RestaurantTable[]
+  comandas  Comanda[]
+  categories Category[]
+  products  Product[]
+  orders    Order[]
+  payments  Payment[]
+  helpCalls HelpCall[]
+  auditLogs AuditLog[]
+  coupons   Coupon[]
+  checkouts Checkout[]
+
+  @@map("restaurants")
+}
+
+// ---------------------------------------------------------------------------
+// Configurações do restaurante — uma linha por Restaurant (a chave
+// primária É o restaurantId, não um id próprio). Nome, logo e cor de marca
+// se propagam pro sistema inteiro (nav, telas do cliente, QR Codes); o
+// estilo do QR é usado só na geração/impressão.
 // ---------------------------------------------------------------------------
 
 model Settings {
-  id             String  @id @default("singleton")
+  restaurantId   String     @id
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   restaurantName String  @default("Comandas")
   logoUrl        String?
   brandColorHex  String  @default("#c1401f")
@@ -68,8 +103,15 @@ enum Role {
 
 model User {
   id           String   @id @default(cuid())
-  name         String
+  // Global, não composto por restaurante — um e-mail é uma conta em todo o
+  // sistema (decisão consciente: mantém o /login simples, sem precisar
+  // saber a qual restaurante a pessoa pertence antes de digitar a senha).
+  // Efeito colateral aceito: a mesma pessoa não pode ter contas de staff
+  // em dois restaurantes diferentes com o mesmo e-mail.
   email        String   @unique
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
   passwordHash String
   role         Role
   active       Boolean  @default(true)
@@ -80,6 +122,7 @@ model User {
   payments   Payment[]  @relation("PaymentRegisteredBy")
   auditLogs  AuditLog[]
 
+  @@index([restaurantId])
   @@map("users")
 }
 
@@ -106,8 +149,14 @@ enum TableStatus {
 }
 
 model RestaurantTable {
-  id        String      @id @default(cuid())
-  number    Int         @unique
+  id           String      @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  // Único por restaurante, não globalmente — "Mesa 1" existe em cada
+  // restaurante. `qrToken` continua único globalmente de propósito: é a
+  // única informação que uma URL de QR Code anônima tem, e precisa
+  // resolver sozinha a qual restaurante pertence (ver /m/[tableToken]).
+  number    Int
   qrToken   String      @unique @default(cuid())
   status    TableStatus @default(FREE)
   createdAt DateTime    @default(now())
@@ -117,6 +166,8 @@ model RestaurantTable {
   orders    Order[]
   helpCalls HelpCall[]
 
+  @@unique([restaurantId, number])
+  @@index([restaurantId])
   @@map("tables")
 }
 
@@ -131,8 +182,13 @@ enum ComandaStatus {
 }
 
 model Comanda {
-  id       String        @id @default(cuid())
-  number   Int           @unique
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  // Único por restaurante — mesmo raciocínio de RestaurantTable.number.
+  // `token` continua único globalmente: é o que uma URL de QR Code de
+  // comanda anônima tem pra resolver sozinha o restaurante.
+  number   Int
   token    String        @unique @default(cuid())
   status   ComandaStatus @default(OPEN)
   openedAt DateTime      @default(now())
@@ -158,6 +214,8 @@ model Comanda {
   payments  Payment[]
   helpCalls HelpCall[]
 
+  @@unique([restaurantId, number])
+  @@index([restaurantId])
   @@map("comandas")
 }
 
@@ -166,7 +224,9 @@ model Comanda {
 // ---------------------------------------------------------------------------
 
 model Category {
-  id        String   @id @default(cuid())
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   name      String
   active    Boolean  @default(true)
   sortOrder Int      @default(0)
@@ -175,11 +235,14 @@ model Category {
 
   products Product[]
 
+  @@index([restaurantId])
   @@map("categories")
 }
 
 model Product {
-  id          String   @id @default(cuid())
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   categoryId  String
   name        String
   description String?
@@ -200,6 +263,7 @@ model Product {
   orderItems OrderItem[]
 
   @@index([categoryId])
+  @@index([restaurantId])
   @@map("products")
 }
 
@@ -261,13 +325,17 @@ enum OrderChannel {
 }
 
 model Order {
-  id          String       @id @default(cuid())
-  // Número sequencial de exibição (#1042). Gerado pela aplicação a partir
-  // do model Counter, dentro de uma transação — não usamos autoincrement()
-  // do banco porque SQLite só permite isso na chave primária, e queremos
-  // o mesmo comportamento em PostgreSQL. Pedido de totem usa a MESMA
-  // sequência — o número também funciona como a senha de retirada.
-  number      Int          @unique
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  // Número sequencial de exibição (#1042), único por restaurante — cada
+  // um tem sua própria sequência (ver src/lib/orderNumber.ts), começando
+  // em 1041 de novo. Gerado pela aplicação a partir do model Counter,
+  // dentro de uma transação — não usamos autoincrement() do banco porque
+  // SQLite só permite isso na chave primária, e queremos o mesmo
+  // comportamento em PostgreSQL. Pedido de totem usa a MESMA sequência —
+  // o número também funciona como a senha de retirada.
+  number      Int
   channel     OrderChannel @default(DINE_IN)
   // Obrigatórios só quando channel = DINE_IN (pedido de totem/delivery/
   // agendado não tem mesa nem comanda física — ver Checkout). Validado na
@@ -296,6 +364,8 @@ model Order {
   payments Payment[]
   checkout Checkout?
 
+  @@unique([restaurantId, number])
+  @@index([restaurantId])
   @@index([tableId])
   @@index([comandaId])
   @@index([status])
@@ -347,7 +417,9 @@ enum PaymentMethod {
 }
 
 model Payment {
-  id          String        @id @default(cuid())
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   // Obrigatório só pra pagamento de comanda (fluxo de mesa). Pagamento de
   // totem quita um Order avulso direto (orderId), sem comanda nenhuma.
   comandaId   String?
@@ -370,6 +442,7 @@ model Payment {
   order      Order?   @relation(fields: [orderId], references: [id])
   registeredBy User? @relation("PaymentRegisteredBy", fields: [registeredById], references: [id])
 
+  @@index([restaurantId])
   @@index([comandaId])
   @@index([orderId])
   @@map("payments")
@@ -382,7 +455,9 @@ model Payment {
 // ---------------------------------------------------------------------------
 
 model HelpCall {
-  id      String @id @default(cuid())
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   tableId String
   table   RestaurantTable @relation(fields: [tableId], references: [id])
 
@@ -392,6 +467,7 @@ model HelpCall {
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
 
+  @@index([restaurantId])
   @@index([resolvedAt])
   @@map("help_calls")
 }
@@ -404,7 +480,9 @@ model HelpCall {
 // ---------------------------------------------------------------------------
 
 model AuditLog {
-  id     String  @id @default(cuid())
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
 
@@ -420,6 +498,7 @@ model AuditLog {
 
   createdAt DateTime @default(now())
 
+  @@index([restaurantId])
   @@index([createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
@@ -440,7 +519,9 @@ model AuditLog {
 // ---------------------------------------------------------------------------
 
 model Checkout {
-  id          String @id @default(cuid())
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   // Itens do carrinho serializados (JSON) — vira o Order só depois de
   // aprovado, então não tem FK pra produto/opção aqui.
   cartJson    String
@@ -476,6 +557,7 @@ model Checkout {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([restaurantId])
   @@map("checkouts")
 }
 
@@ -491,8 +573,12 @@ enum CouponType {
 // de digitar o código, pra não esgotar o limite de uso com carrinho
 // abandonado.
 model Coupon {
-  id     String     @id @default(cuid())
-  code   String     @unique
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  // Único por restaurante — dois restaurantes podem ter, cada um, um
+  // cupom "BEMVINDO10".
+  code   String
   type   CouponType
   // PERCENT: 1–100. FIXED: centavos.
   value  Int
@@ -508,5 +594,7 @@ model Coupon {
   checkouts Checkout[]
   comandas  Comanda[]
 
+  @@unique([restaurantId, code])
+  @@index([restaurantId])
   @@map("coupons")
 }

@@ -1,4 +1,5 @@
 import { Wallet, ClipboardList, TrendingUp, CheckCircle2 } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCents } from "@/lib/money";
 import { AdminPageHeader } from "@/components/AdminPageHeader";
@@ -29,16 +30,21 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
+  const user = await requireUser(["ADMIN"]);
   const params = await searchParams;
   const { from, to, preset } = resolveRange(params);
 
   const [payments, orders, closedComandas] = await Promise.all([
     prisma.payment.findMany({
-      where: { paidAt: { gte: from, lte: to } },
+      where: { restaurantId: user.restaurantId, paidAt: { gte: from, lte: to } },
       select: { amountCents: true, method: true, paidAt: true },
     }),
     prisma.order.findMany({
-      where: { createdAt: { gte: from, lte: to }, status: { not: "CANCELLED" } },
+      where: {
+        restaurantId: user.restaurantId,
+        createdAt: { gte: from, lte: to },
+        status: { not: "CANCELLED" },
+      },
       select: {
         id: true,
         items: {
@@ -51,7 +57,11 @@ export default async function ReportsPage({
     // seu status não serve mais como marcador histórico. Quem conta um
     // "fechamento" é o pagamento que quitou o saldo daquele atendimento.
     prisma.payment.count({
-      where: { closesComanda: true, paidAt: { gte: from, lte: to } },
+      where: {
+        restaurantId: user.restaurantId,
+        closesComanda: true,
+        paidAt: { gte: from, lte: to },
+      },
     }),
   ]);
 

@@ -27,13 +27,15 @@ export async function POST(request: Request) {
   // valor) a partir da configuração atual, proporcional ao valor sendo
   // registrado agora. Só entra no registro do pagamento — nunca no saldo
   // da comanda (ver comentário no schema, campo Payment.serviceFeeCents).
-  const settings = await getSettings();
+  const settings = await getSettings(user.restaurantId);
   const serviceFeeCents = settings.serviceFeeEnabled
     ? Math.round((amountCents * settings.serviceFeePercent) / 100)
     : 0;
 
   const result = await prisma.$transaction(async (tx) => {
-    const comanda = await tx.comanda.findUnique({ where: { id: comandaId } });
+    const comanda = await tx.comanda.findFirst({
+      where: { id: comandaId, restaurantId: user.restaurantId },
+    });
     if (!comanda) return { error: "not_found" as const };
     if (comanda.status === "CLOSED") return { error: "already_closed" as const };
 
@@ -67,6 +69,7 @@ export async function POST(request: Request) {
 
     const payment = await tx.payment.create({
       data: {
+        restaurantId: user.restaurantId,
         comandaId,
         method,
         amountCents,
@@ -130,7 +133,7 @@ export async function POST(request: Request) {
     );
   }
 
-  publish("pdv", { type: "comanda-updated", comandaId });
+  publish(`pdv:${user.restaurantId}`, { type: "comanda-updated", comandaId });
 
   return NextResponse.json(result, { status: 201 });
 }

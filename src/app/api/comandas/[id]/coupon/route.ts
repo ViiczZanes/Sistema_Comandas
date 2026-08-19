@@ -27,7 +27,9 @@ export async function POST(
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const comanda = await prisma.comanda.findUnique({ where: { id } });
+  const comanda = await prisma.comanda.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+  });
   if (!comanda) {
     return NextResponse.json({ error: "Comanda não encontrada." }, { status: 404 });
   }
@@ -47,7 +49,7 @@ export async function POST(
     );
   }
 
-  const result = await checkCoupon(parsed.data.code, subtotalCents);
+  const result = await checkCoupon(parsed.data.code, subtotalCents, user.restaurantId);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 409 });
   }
@@ -62,6 +64,7 @@ export async function POST(
   });
 
   logAction({
+    restaurantId: user.restaurantId,
     userId: user.id,
     action: "comanda.coupon_apply",
     entityType: "Comanda",
@@ -80,7 +83,9 @@ export async function DELETE(
   if (error) return error;
 
   const { id } = await ctx.params;
-  const comanda = await prisma.comanda.findUnique({ where: { id } });
+  const comanda = await prisma.comanda.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+  });
   if (!comanda) {
     return NextResponse.json({ error: "Comanda não encontrada." }, { status: 404 });
   }
@@ -92,6 +97,7 @@ export async function DELETE(
 
   if (comanda.couponCode) {
     logAction({
+      restaurantId: user.restaurantId,
       userId: user.id,
       action: "comanda.coupon_remove",
       entityType: "Comanda",

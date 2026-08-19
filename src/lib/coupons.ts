@@ -12,12 +12,15 @@ export type CouponCheckResult =
  * ver /api/totem/checkout/[id]). */
 export async function checkCoupon(
   rawCode: string,
-  subtotalCents: number
+  subtotalCents: number,
+  restaurantId: string
 ): Promise<CouponCheckResult> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return { ok: false, error: "Digite um código de cupom." };
 
-  const coupon = await prisma.coupon.findUnique({ where: { code } });
+  const coupon = await prisma.coupon.findUnique({
+    where: { restaurantId_code: { restaurantId, code } },
+  });
   if (!coupon || !coupon.active) {
     return { ok: false, error: "Cupom inválido." };
   }

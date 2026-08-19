@@ -39,7 +39,9 @@ export async function PATCH(
     );
   }
 
-  const before = await prisma.user.findUnique({ where: { id } });
+  const before = await prisma.user.findFirst({
+    where: { id, restaurantId: currentUser.restaurantId },
+  });
   if (!before) {
     return NextResponse.json(
       { error: "Usuário não encontrado." },
@@ -80,6 +82,7 @@ export async function PATCH(
   }
   if (changes.length > 0) {
     logAction({
+      restaurantId: currentUser.restaurantId,
       userId: currentUser.id,
       action: "user.update",
       entityType: "User",

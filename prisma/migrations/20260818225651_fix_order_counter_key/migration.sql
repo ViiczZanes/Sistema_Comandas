@@ -1,0 +1,14 @@
+-- A migration multi-tenant anterior (20260818222043_multi_tenant) escopou
+-- restaurantId em todo mundo, mas esqueceu do model Counter — o contador de
+-- número de pedido (src/lib/orderNumber.ts) passou a usar a chave composta
+-- `${restaurantId}:order_number`, só que a linha antiga (chave literal
+-- "order_number", parada no valor mais alto já usado) continuou órfã. O
+-- primeiro pedido do restaurante 'rst_default' depois da migração recomeçou
+-- do 1041, colidindo com pedidos que já existiam nesse número — violação de
+-- unique (restaurantId, number) no Order.
+--
+-- Como só existia UM restaurante na hora da migração multi-tenant (é ela
+-- quem cria o 'rst_default'), a linha antiga é sempre dele — só renomear a
+-- chave preserva a sequência corretamente. Se não existir (banco novo, sem
+-- pedido nenhum antes da migração multi-tenant), o UPDATE não afeta nada.
+UPDATE "counters" SET "name" = 'rst_default:order_number' WHERE "name" = 'order_number';

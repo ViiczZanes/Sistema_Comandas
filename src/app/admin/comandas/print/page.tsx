@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { comandaUrl } from "@/lib/qrcode";
 import { getSettings } from "@/lib/settings";
@@ -6,9 +7,13 @@ import { PrintButton } from "@/components/PrintButton";
 import { PrintComandasGrid } from "./PrintComandasGrid";
 
 export default async function PrintComandasPage() {
+  const user = await requireUser(["ADMIN"]);
   const [comandas, settings] = await Promise.all([
-    prisma.comanda.findMany({ orderBy: { number: "asc" } }),
-    getSettings(),
+    prisma.comanda.findMany({
+      where: { restaurantId: user.restaurantId },
+      orderBy: { number: "asc" },
+    }),
+    getSettings(user.restaurantId),
   ]);
 
   const cards = comandas.map((comanda) => ({

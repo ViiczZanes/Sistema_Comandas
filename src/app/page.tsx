@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { QrCode, UtensilsCrossed, ChefHat, ArrowRight } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { getSettings } from "@/lib/settings";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/Logo";
 
@@ -20,7 +19,7 @@ const STEPS = [
 ];
 
 export default async function HomePage() {
-  const [user, settings] = await Promise.all([getCurrentUser(), getSettings()]);
+  const user = await getCurrentUser();
   if (user) {
     redirect(homeForRole(user.role));
   }
@@ -32,7 +31,7 @@ export default async function HomePage() {
         className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,theme(colors.brand.100),transparent)]"
       />
 
-      <Logo size="lg" className="mb-8" name={settings.restaurantName} logoUrl={settings.logoUrl} />
+      <Logo size="lg" className="mb-8" name="Comandas" logoUrl={null} />
 
       <p className="text-xs font-bold tracking-[0.2em] text-brand-600 uppercase">
         Pedido autônomo por QR Code
@@ -61,14 +60,22 @@ export default async function HomePage() {
         ))}
       </div>
 
-      <Link href="/login" className="mt-12">
-        <Button size="lg">
-          Entrar como equipe
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      </Link>
+      <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
+        <Link href="/login">
+          <Button size="lg">
+            Entrar como equipe
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </Link>
+        <Link href="/signup">
+          <Button size="lg" variant="secondary">
+            Criar meu restaurante
+          </Button>
+        </Link>
+      </div>
       <p className="mt-3 text-xs text-stone-400">
-        Área de administração, cozinha e caixa.
+        Já tem conta? Entrar como equipe. Restaurante novo no sistema?
+        Criar meu restaurante.
       </p>
     </main>
   );

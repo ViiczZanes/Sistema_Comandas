@@ -6,10 +6,11 @@ import { logAction } from "@/lib/auditLog";
 import { formatCents } from "@/lib/money";
 
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
   if (error) return error;
 
   const products = await prisma.product.findMany({
+    where: { restaurantId: user.restaurantId },
     include: { category: true, options: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
@@ -35,9 +36,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const product = await prisma.product.create({ data: parsed.data });
+  // Confere que a categoria escolhida é do mesmo restaurante — sem isso,
+  // dava pra criar um produto "pendurado" numa categoria de outro tenant.
+  const category = await prisma.category.findFirst({
+    where: { id: parsed.data.categoryId, restaurantId: user.restaurantId },
+  });
+  if (!category) {
+    return NextResponse.json({ error: "Categoria não encontrada." }, { status: 404 });
+  }
+
+  const product = await prisma.product.create({
+    data: { ...parsed.data, restaurantId: user.restaurantId },
+  });
 
   logAction({
+    restaurantId: user.restaurantId,
     userId: user.id,
     action: "product.create",
     entityType: "Product",

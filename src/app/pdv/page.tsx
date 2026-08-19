@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Ticket, Grid3x3, Ban } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TABLE_STATUS_LABEL } from "@/lib/statusLabels";
 import { PdvAutoRefresh } from "@/components/PdvAutoRefresh";
@@ -17,7 +18,9 @@ const STATUS_STYLE = {
 } as const;
 
 export default async function PdvPage() {
+  const user = await requireUser(["ADMIN", "WAITER"]);
   const tables = await prisma.restaurantTable.findMany({
+    where: { restaurantId: user.restaurantId },
     orderBy: { number: "asc" },
     include: {
       comandas: {

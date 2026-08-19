@@ -14,7 +14,7 @@ export async function POST(
   request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const { id: productId } = await ctx.params;
@@ -22,6 +22,13 @@ export async function POST(
   const parsed = createSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+  }
+
+  const product = await prisma.product.findFirst({
+    where: { id: productId, restaurantId: user.restaurantId },
+  });
+  if (!product) {
+    return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
   }
 
   const option = await prisma.productOption.create({

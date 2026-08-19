@@ -1,22 +1,21 @@
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AdminPageHeader } from "@/components/AdminPageHeader";
 import { UsersManager } from "./UsersManager";
-import { getCurrentUser } from "@/lib/auth";
 
 export default async function UsersPage() {
-  const [users, currentUser] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        active: true,
-      },
-    }),
-    getCurrentUser(),
-  ]);
+  const currentUser = await requireUser(["ADMIN"]);
+  const users = await prisma.user.findMany({
+    where: { restaurantId: currentUser.restaurantId },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+    },
+  });
 
   return (
     <div>
@@ -24,7 +23,7 @@ export default async function UsersPage() {
         title="Usuários"
         description="Quem pode acessar a Administração, o PDV/Caixa e a Cozinha."
       />
-      <UsersManager users={users} currentUserId={currentUser?.id ?? ""} />
+      <UsersManager users={users} currentUserId={currentUser.id} />
     </div>
   );
 }

@@ -1,18 +1,24 @@
 import { AlertCircle } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AdminPageHeader } from "@/components/AdminPageHeader";
 import { ProductsManager } from "./ProductsManager";
 
 export default async function ProductsPage() {
+  const user = await requireUser(["ADMIN"]);
   const [products, categories] = await Promise.all([
     prisma.product.findMany({
+      where: { restaurantId: user.restaurantId },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
         category: true,
         options: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
       },
     }),
-    prisma.category.findMany({ orderBy: { name: "asc" } }),
+    prisma.category.findMany({
+      where: { restaurantId: user.restaurantId },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (

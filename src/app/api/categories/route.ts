@@ -4,10 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 
 export async function GET() {
-  const { error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
   if (error) return error;
 
   const categories = await prisma.category.findMany({
+    where: { restaurantId: user.restaurantId },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
   return NextResponse.json(categories);
@@ -19,7 +20,7 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const { error } = await requireApiUser(["ADMIN"]);
+  const { user, error } = await requireApiUser(["ADMIN"]);
   if (error) return error;
 
   const json = await request.json().catch(() => null);
@@ -28,6 +29,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const category = await prisma.category.create({ data: parsed.data });
+  const category = await prisma.category.create({
+    data: { ...parsed.data, restaurantId: user.restaurantId },
+  });
   return NextResponse.json(category, { status: 201 });
 }

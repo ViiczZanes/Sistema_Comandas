@@ -12,6 +12,7 @@ import { isValidPickupSlot } from "@/lib/pickupSlots";
 // regressão no totem já testado. A sessão de pagamento em si (model
 // Checkout) e as peças de precificação/cupom/provider são as mesmas.
 const bodySchema = z.object({
+  restaurantId: z.string().min(1),
   items: z.array(orderItemSchema).min(1),
   method: z.enum(["PIX", "CREDIT", "DEBIT"]),
   couponCode: z.string().trim().min(1).optional(),
@@ -21,14 +22,13 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const settings = await getSettings();
-
   const json = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
-  const { channel } = parsed.data;
+  const { channel, restaurantId } = parsed.data;
+  const settings = await getSettings(restaurantId);
 
   if (channel === "DELIVERY") {
     if (!settings.deliveryEnabled) {
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     scheduledFor = candidate;
   }
 
-  const priced = await priceOrderItems(parsed.data.items);
+  const priced = await priceOrderItems(parsed.data.items, restaurantId);
   if (!priced.ok) {
     return NextResponse.json({ error: priced.error }, { status: 409 });
   }
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
   let couponId: string | null = null;
   let discountCents = 0;
   if (parsed.data.couponCode) {
-    const coupon = await checkCoupon(parsed.data.couponCode, priced.totalCents);
+    const coupon = await checkCoupon(parsed.data.couponCode, priced.totalCents, restaurantId);
     if (!coupon.ok) {
       return NextResponse.json({ error: coupon.error }, { status: 409 });
     }
@@ -93,6 +93,7 @@ export async function POST(request: Request) {
 
   const checkout = await prisma.checkout.create({
     data: {
+      restaurantId,
       cartJson: JSON.stringify(priced.items),
       subtotalCents: priced.totalCents,
       amountCents,

@@ -4,12 +4,19 @@ import type { Prisma } from "@/generated/prisma/client";
 // atômica, usando upsert+increment no model Counter. Precisa ser chamado
 // dentro da mesma transação que cria o Order, para não haver corrida entre
 // pedidos concorrentes.
+//
+// Cada restaurante tem sua própria sequência (chave do Counter prefixada
+// pelo restaurantId) — dois restaurantes diferentes podem ambos ter um
+// pedido "#1041", cada um começando do zero, do jeito que um "número de
+// senha" de balcão de verdade funciona.
 export async function nextOrderNumber(
-  tx: Prisma.TransactionClient
+  tx: Prisma.TransactionClient,
+  restaurantId: string
 ): Promise<number> {
+  const name = `${restaurantId}:order_number`;
   const counter = await tx.counter.upsert({
-    where: { name: "order_number" },
-    create: { name: "order_number", value: 1041 },
+    where: { name },
+    create: { name, value: 1041 },
     update: { value: { increment: 1 } },
   });
   return counter.value;

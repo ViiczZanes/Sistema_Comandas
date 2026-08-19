@@ -43,8 +43,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const order = await prisma.order.findUnique({
-    where: { id },
+  const order = await prisma.order.findFirst({
+    where: { id, restaurantId: user.restaurantId },
     include: {
       table: { select: { number: true } },
       comanda: { select: { number: true } },
@@ -81,8 +81,8 @@ export async function PATCH(
     data: { status: parsed.data.status },
   });
 
-  publish("kitchen", { type: "order-updated", orderId: updated.id });
-  publish("pdv", { type: "order-updated", orderId: updated.id });
+  publish(`kitchen:${user.restaurantId}`, { type: "order-updated", orderId: updated.id });
+  publish(`pdv:${user.restaurantId}`, { type: "order-updated", orderId: updated.id });
 
   if (parsed.data.status === "CANCELLED") {
     const origin =
@@ -94,6 +94,7 @@ export async function PATCH(
             ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
             : "Balcão";
     logAction({
+      restaurantId: user.restaurantId,
       userId: user.id,
       action: "order.cancel",
       entityType: "Order",

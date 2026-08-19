@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/Toaster";
 import { ConfirmDialogHost } from "@/components/ui/ConfirmDialogHost";
-import { getSettings } from "@/lib/settings";
-import { brandScaleCss } from "@/lib/brandColor";
+import { brandScaleCss, DEFAULT_BRAND_COLOR_HEX } from "@/lib/brandColor";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,31 +15,32 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSettings();
-  return {
-    title: {
-      default: `${settings.restaurantName} — Pedidos por QR Code`,
-      template: `%s · ${settings.restaurantName}`,
-    },
-    description:
-      "Pedidos por mesa e comanda via QR Code, cozinha em tempo real e PDV.",
-  };
-}
+// Multi-tenant: o layout raiz é compartilhado por TODOS os restaurantes
+// (inclusive por telas que ainda não sabem a qual restaurante pertencem —
+// "/", "/login", "/signup"), então não faz mais sentido buscar Settings de
+// um restaurante específico aqui. A marca (nome, logo, cor) de cada
+// restaurante é aplicada mais embaixo na árvore, por quem já sabe o
+// restaurantId certo (layouts de /admin, /pdv, /kitchen; páginas públicas
+// resolvidas por token de mesa/comanda; /totem/[slug] e /pedir/[slug]) —
+// ver brandScaleCss nesses arquivos. Aqui fica só a cor padrão da
+// plataforma, como fallback visual antes do login.
+export const metadata: Metadata = {
+  title: {
+    default: "Comandas — Pedidos por QR Code",
+    template: "%s · Comandas",
+  },
+  description:
+    "Pedidos por mesa e comanda via QR Code, cozinha em tempo real e PDV.",
+};
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const settings = await getSettings();
-
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-stone-50 text-stone-900">
-        {/* Reescreve a escala --color-brand-* pro matiz escolhido em
-            Administração → Configurações. Precisa vir antes de {children}
-            pra não haver flash da cor padrão. */}
-        <style dangerouslySetInnerHTML={{ __html: brandScaleCss(settings.brandColorHex) }} />
+        <style dangerouslySetInnerHTML={{ __html: brandScaleCss(DEFAULT_BRAND_COLOR_HEX) }} />
         {children}
         <Toaster />
         <ConfirmDialogHost />

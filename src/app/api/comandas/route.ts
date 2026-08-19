@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 
 export async function GET(request: Request) {
-  const { error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER", "KITCHEN"]);
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
@@ -13,6 +13,7 @@ export async function GET(request: Request) {
 
   const comandas = await prisma.comanda.findMany({
     where: {
+      restaurantId: user.restaurantId,
       ...(status ? { status: status as "OPEN" | "AWAITING_PAYMENT" | "CLOSED" } : {}),
       ...(tableId ? { currentTableId: tableId } : {}),
     },
@@ -27,7 +28,7 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const { error } = await requireApiUser(["ADMIN", "WAITER"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER"]);
   if (error) return error;
 
   const json = await request.json().catch(() => null);
@@ -37,7 +38,9 @@ export async function POST(request: Request) {
   }
 
   const existing = await prisma.comanda.findUnique({
-    where: { number: parsed.data.number },
+    where: {
+      restaurantId_number: { restaurantId: user.restaurantId, number: parsed.data.number },
+    },
   });
   if (existing) {
     return NextResponse.json(
@@ -47,7 +50,7 @@ export async function POST(request: Request) {
   }
 
   const comanda = await prisma.comanda.create({
-    data: { number: parsed.data.number },
+    data: { restaurantId: user.restaurantId, number: parsed.data.number },
   });
 
   return NextResponse.json(comanda, { status: 201 });

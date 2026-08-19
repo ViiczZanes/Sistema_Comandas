@@ -22,15 +22,20 @@ export async function PATCH(
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   }
 
-  const coupon = await prisma.coupon
-    .update({ where: { id }, data: parsed.data })
-    .catch(() => null);
-  if (!coupon) {
+  const { count } = await prisma.coupon
+    .updateMany({
+      where: { id, restaurantId: user.restaurantId },
+      data: parsed.data,
+    })
+    .catch(() => ({ count: 0 }));
+  if (count === 0) {
     return NextResponse.json({ error: "Cupom não encontrado." }, { status: 404 });
   }
+  const coupon = await prisma.coupon.findUniqueOrThrow({ where: { id } });
 
   if (parsed.data.active !== undefined) {
     logAction({
+      restaurantId: user.restaurantId,
       userId: user.id,
       action: "coupon.update",
       entityType: "Coupon",
@@ -50,7 +55,9 @@ export async function DELETE(
   if (error) return error;
 
   const { id } = await ctx.params;
-  const coupon = await prisma.coupon.findUnique({ where: { id } });
+  const coupon = await prisma.coupon.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+  });
   if (!coupon) {
     return NextResponse.json({ error: "Cupom não encontrado." }, { status: 404 });
   }
@@ -69,6 +76,7 @@ export async function DELETE(
   }
 
   logAction({
+    restaurantId: user.restaurantId,
     userId: user.id,
     action: "coupon.delete",
     entityType: "Coupon",

@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
+import { brandScaleCss } from "@/lib/brandColor";
 import { StaffNav } from "@/components/StaffNav";
 
 export default async function PdvLayout({
@@ -7,13 +8,12 @@ export default async function PdvLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [user, settings] = await Promise.all([
-    requireUser(["ADMIN", "WAITER"]),
-    getSettings(),
-  ]);
+  const user = await requireUser(["ADMIN", "WAITER"]);
+  const settings = await getSettings(user.restaurantId);
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
+      <style dangerouslySetInnerHTML={{ __html: brandScaleCss(settings.brandColorHex) }} />
       <StaffNav
         user={{ name: user.name, role: user.role }}
         restaurantName={settings.restaurantName}

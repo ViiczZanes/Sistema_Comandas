@@ -39,12 +39,12 @@ export async function PATCH(request: Request) {
   const data = { ...parsed.data };
   if (data.logoUrl === "") data.logoUrl = null;
 
-  const before = await getSettings();
+  const before = await getSettings(user.restaurantId);
 
   const settings = await prisma.settings.upsert({
-    where: { id: "singleton" },
+    where: { restaurantId: user.restaurantId },
     update: data,
-    create: { id: "singleton", ...data },
+    create: { restaurantId: user.restaurantId, ...data },
   });
 
   // Taxa de serviço mexe direto com dinheiro cobrado do cliente — vale um
@@ -79,6 +79,7 @@ export async function PATCH(request: Request) {
   }
   if (changes.length > 0) {
     logAction({
+      restaurantId: user.restaurantId,
       userId: user.id,
       action: "settings.update",
       entityType: "Settings",

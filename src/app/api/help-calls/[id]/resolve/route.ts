@@ -9,12 +9,14 @@ export async function POST(
   _request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireApiUser(["ADMIN", "WAITER"]);
+  const { user, error } = await requireApiUser(["ADMIN", "WAITER"]);
   if (error) return error;
 
   const { id } = await ctx.params;
 
-  const helpCall = await prisma.helpCall.findUnique({ where: { id } });
+  const helpCall = await prisma.helpCall.findFirst({
+    where: { id, restaurantId: user.restaurantId },
+  });
   if (!helpCall) {
     return NextResponse.json(
       { error: "Chamado não encontrado." },
@@ -27,7 +29,7 @@ export async function POST(
     data: { resolvedAt: new Date() },
   });
 
-  publish("pdv", { type: "help-resolved", helpCallId: updated.id });
+  publish(`pdv:${user.restaurantId}`, { type: "help-resolved", helpCallId: updated.id });
 
   return NextResponse.json(updated);
 }
