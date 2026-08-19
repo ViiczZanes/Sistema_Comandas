@@ -298,6 +298,17 @@ export function SettingsManager({
             </div>
           </Field>
 
+          <Field label="Integrações">
+            <div className="flex flex-wrap gap-3 text-sm">
+              <Link
+                href="/admin/ifood"
+                className="flex items-center gap-1 text-brand-600 hover:underline"
+              >
+                Conectar com o iFood <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </Field>
+
           <Button type="submit" loading={saving} icon={<Save />}>
             Salvar configurações
           </Button>

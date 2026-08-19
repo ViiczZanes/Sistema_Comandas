@@ -53,7 +53,13 @@ type OrderDTO = {
   items: OrderItemDTO[];
 };
 
-type PaymentMethod = "CASH" | "CREDIT" | "DEBIT" | "PIX";
+// Formas que a equipe pode escolher pra registrar um pagamento manual no
+// PDV — nunca inclui IFOOD (esse é lançado sozinho pelo poller quando o
+// pedido chega, nunca por um garçom digitando no balcão).
+type SelectablePaymentMethod = "CASH" | "CREDIT" | "DEBIT" | "PIX";
+// Já os pagamentos existentes de uma comanda podem, em tese, incluir
+// qualquer método aceito pelo sistema — daí o tipo mais largo aqui.
+type PaymentMethod = SelectablePaymentMethod | "IFOOD";
 
 type ComandaDTO = {
   id: string;
@@ -65,7 +71,7 @@ type ComandaDTO = {
   discountCents: number;
 };
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Banknote }[] = [
+const PAYMENT_METHODS: { value: SelectablePaymentMethod; label: string; icon: typeof Banknote }[] = [
   { value: "CASH", label: "Dinheiro", icon: Banknote },
   { value: "PIX", label: "PIX", icon: Smartphone },
   { value: "CREDIT", label: "Crédito", icon: CreditCard },
@@ -87,7 +93,7 @@ export function ComandaCard({
 }) {
   const router = useRouter();
   const [panel, setPanel] = useState<"none" | "pay" | "transfer">("none");
-  const [method, setMethod] = useState<PaymentMethod>("CASH");
+  const [method, setMethod] = useState<SelectablePaymentMethod>("CASH");
   const [loading, setLoading] = useState(false);
 
   const grossCents = comanda.orders.reduce((a, o) => a + o.totalCents, 0);

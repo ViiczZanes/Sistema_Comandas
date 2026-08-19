@@ -113,4 +113,5 @@ export const PAYMENT_METHOD_LABEL: Record<string, string> = {
   CREDIT: "💳 Crédito",
   DEBIT: "💳 Débito",
   PIX: "📱 PIX",
+  IFOOD: "🛵 iFood",
 };

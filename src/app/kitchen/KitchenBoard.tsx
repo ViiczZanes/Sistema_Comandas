@@ -19,6 +19,7 @@ import { cn } from "@/lib/cn";
 import { getOrderUrgency, formatElapsed } from "@/lib/orderAge";
 import { nextOrderStatus, nextOrderStatusLabel } from "@/lib/statusLabels";
 import { playNewOrderChime, primeNotificationSound } from "@/lib/notificationSound";
+import { toast } from "@/lib/toastStore";
 
 const SOUND_PREF_KEY = "comandas:kitchen-sound";
 
@@ -47,7 +48,7 @@ type OrderDTO = {
     | "OUT_FOR_DELIVERY"
     | "DELIVERED"
     | "CANCELLED";
-  channel: "DINE_IN" | "KIOSK" | "DELIVERY" | "SCHEDULED";
+  channel: "DINE_IN" | "KIOSK" | "DELIVERY" | "SCHEDULED" | "IFOOD";
   createdAt: string;
   // Pedido de totem (balcão) não tem mesa/comanda — ver OrderChannel.
   table: { number: number } | null;
@@ -55,6 +56,9 @@ type OrderDTO = {
   // Só preenchidos pra channel DELIVERY / SCHEDULED respectivamente.
   deliveryAddress: string | null;
   scheduledFor: string | null;
+  // Só preenchido pra channel IFOOD (ver src/lib/ifood/poller.ts) — carrega
+  // "iFood #<displayId>", o id curto usado lá pra facilitar conferência.
+  note: string | null;
   items: OrderItemDTO[];
 };
 
@@ -115,6 +119,8 @@ function originLabel(order: OrderDTO): string {
       return "Retirada agendada";
     case "KIOSK":
       return "Balcão";
+    case "IFOOD":
+      return order.note ?? "iFood";
     default:
       return order.table && order.comanda
         ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
@@ -230,11 +236,18 @@ export function KitchenBoard() {
     setOrders((prev) =>
       prev.map((o) => (o.id === order.id ? { ...o, status: next as OrderDTO["status"] } : o))
     );
-    await fetch(`/api/orders/${order.id}/status`, {
+    const res = await fetch(`/api/orders/${order.id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next }),
     });
+    // Pedido do iFood: a mudança de status já valeu pro nosso sistema
+    // mesmo que avisar o iFood tenha falhado (ver PATCH .../status) — só
+    // avisa a equipe, não desfaz nada.
+    const data = await res.json().catch(() => null);
+    if (data?.ifoodSyncWarning) {
+      toast.error(`iFood: ${data.ifoodSyncWarning}`);
+    }
     reload();
   }
 

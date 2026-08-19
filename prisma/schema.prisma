@@ -51,6 +51,7 @@ model Restaurant {
   auditLogs AuditLog[]
   coupons   Coupon[]
   checkouts Checkout[]
+  ifoodIntegration IfoodIntegration?
 
   @@map("restaurants")
 }
@@ -322,6 +323,7 @@ enum OrderChannel {
   KIOSK     // totem de autoatendimento, retirada no balcão
   DELIVERY  // pedido remoto, entregue no endereço do cliente
   SCHEDULED // pedido remoto, retirada agendada no balcão
+  IFOOD     // pedido feito no app do iFood — ver src/lib/ifood
 }
 
 model Order {
@@ -354,6 +356,11 @@ model Order {
   // mostrarem sem precisar de join.
   deliveryAddress String?
   scheduledFor    DateTime?
+  // Id do pedido numa plataforma externa (hoje: iFood) — nome genérico de
+  // propósito, pra outro canal externo futuro reaproveitar o mesmo campo.
+  // Único por restaurante: evita criar o mesmo pedido duas vezes se um
+  // evento chegar repetido antes do acknowledgment (ver src/lib/ifood).
+  externalId  String?
   note        String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -365,6 +372,7 @@ model Order {
   checkout Checkout?
 
   @@unique([restaurantId, number])
+  @@unique([restaurantId, externalId])
   @@index([restaurantId])
   @@index([tableId])
   @@index([comandaId])
@@ -375,7 +383,11 @@ model Order {
 model OrderItem {
   id             String  @id @default(cuid())
   orderId        String
-  productId      String
+  // Opcional: pedidos de canais externos sem catálogo sincronizado (hoje:
+  // IFOOD) não referenciam um Product local — o nome/preço já vêm como
+  // snapshot abaixo, sem precisar de FK pro cardápio interno. Todo outro
+  // canal continua sempre preenchendo isso normalmente.
+  productId      String?
   productName    String // snapshot do nome no momento do pedido
   quantity       Int
   unitPriceCents Int // snapshot do preço no momento do pedido
@@ -383,7 +395,7 @@ model OrderItem {
   observation    String?
 
   order   Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product            @relation(fields: [productId], references: [id])
+  product Product?           @relation(fields: [productId], references: [id])
   options OrderItemOption[]
 
   @@index([orderId])
@@ -414,6 +426,12 @@ enum PaymentMethod {
   CREDIT
   DEBIT
   PIX
+  // Pago dentro do app do iFood — nunca escolhido manualmente por
+  // ninguém (não aparece como opção no PDV/totem), só usado pelo
+  // src/lib/ifood/poller.ts ao registrar o Payment de um pedido que já
+  // chegou pago. Categoria própria nos relatórios, pra não misturar com
+  // PIX de verdade cobrado no salão.
+  IFOOD
 }
 
 model Payment {
@@ -597,4 +615,56 @@ model Coupon {
   @@unique([restaurantId, code])
   @@index([restaurantId])
   @@map("coupons")
+}
+
+// ---------------------------------------------------------------------------
+// Integração com o iFood — recebe pedidos feitos no app do iFood direto na
+// Cozinha, como mais um OrderChannel (ver enum acima). Uma linha por
+// restaurante (1:1, igual Settings). Client secret e refresh token nunca
+// ficam em texto puro — ver src/lib/crypto.ts. O access token em si NÃO
+// fica persistido aqui: expira em horas, então é buscado sob demanda (a
+// partir do refresh token) e guardado só em memória do processo
+// (src/lib/ifood/auth.ts).
+//
+// App do iFood é do tipo "distribuído" (uma autorização por loja, feita
+// pelo dono da loja no Portal do Parceiro) — não "centralizado"
+// (client_credentials direto). Por isso o fluxo de conexão troca um
+// authorizationCode por um par access/refresh token (grant
+// authorization_code), e as renovações seguintes usam o refresh token
+// (grant refresh_token). Ver src/lib/ifood/auth.ts.
+// ---------------------------------------------------------------------------
+
+model IfoodIntegration {
+  restaurantId String     @id
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  clientId        String
+  // AES-256-GCM (iv:tag:ciphertext) — ver src/lib/crypto.ts. Nunca
+  // devolvido pro navegador depois de salvo, campo write-only na UI.
+  clientSecretEnc String
+  // Idem — obtido na troca do authorizationCode, usado pra renovar o
+  // access token sem precisar repetir a autorização no Portal do Parceiro
+  // a cada 6h. Pode ser rotacionado a cada renovação (ver auth.ts).
+  refreshTokenEnc String?
+
+  // Preenchidos depois de "Conectar" (busca a lista de merchants da conta
+  // e o admin escolhe um, se houver mais de um). merchantName é um
+  // snapshot só pra exibir na tela sem precisar rechamar a API.
+  merchantId   String?
+  merchantName String?
+
+  // Liga/desliga o poller sem apagar a credencial salva.
+  enabled Boolean @default(false)
+
+  // Observabilidade simples pra tela de Configurações mostrar "última
+  // sincronização" / erro mais recente, sem precisar de uma tabela de log
+  // separada pra isso.
+  lastPollAt       DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ifood_integrations")
 }

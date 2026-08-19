@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiUser } from "@/lib/apiAuth";
 import { publish } from "@/lib/events";
 import { logAction } from "@/lib/auditLog";
+import { syncIfoodOrderStatus } from "@/lib/ifood/statusSync";
 
 const ORDER: Record<string, number> = {
   NEW: 0,
@@ -90,9 +91,11 @@ export async function PATCH(
         ? "Entrega"
         : order.channel === "SCHEDULED"
           ? "Retirada agendada"
-          : order.table && order.comanda
-            ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
-            : "Balcão";
+          : order.channel === "IFOOD"
+            ? "iFood"
+            : order.table && order.comanda
+              ? `Mesa ${order.table.number} · Comanda ${order.comanda.number}`
+              : "Balcão";
     logAction({
       restaurantId: user.restaurantId,
       userId: user.id,
@@ -103,5 +106,14 @@ export async function PATCH(
     });
   }
 
-  return NextResponse.json(updated);
+  // Pedido do iFood: avisa o lojista deles quando a Cozinha confirma,
+  // inicia o preparo ou marca pronto — best-effort, nunca trava a resposta
+  // por causa de uma API externa (ver comentário em statusSync.ts).
+  let ifoodSyncWarning: string | undefined;
+  if (order.channel === "IFOOD" && order.externalId) {
+    const result = await syncIfoodOrderStatus(user.restaurantId, order.externalId, updated.status);
+    if (!result.ok) ifoodSyncWarning = result.error;
+  }
+
+  return NextResponse.json({ ...updated, ifoodSyncWarning });
 }

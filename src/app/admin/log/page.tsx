@@ -6,6 +6,7 @@ import {
   UserCog,
   Settings as SettingsIcon,
   Tag,
+  ShoppingBag,
 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -25,6 +26,9 @@ const ACTION_META: Record<string, { icon: typeof XCircle; tone: string }> = {
   "coupon.create": { icon: Tag, tone: "bg-emerald-100 text-emerald-700" },
   "coupon.update": { icon: Tag, tone: "bg-emerald-100 text-emerald-700" },
   "coupon.delete": { icon: Tag, tone: "bg-red-100 text-red-600" },
+  "ifood.connect": { icon: ShoppingBag, tone: "bg-violet-100 text-violet-700" },
+  "ifood.disconnect": { icon: ShoppingBag, tone: "bg-red-100 text-red-600" },
+  "ifood.toggle": { icon: ShoppingBag, tone: "bg-violet-100 text-violet-700" },
 };
 
 function formatWhen(date: Date): string {
