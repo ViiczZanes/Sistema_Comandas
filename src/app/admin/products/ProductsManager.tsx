@@ -8,6 +8,7 @@ import {
   ChevronDown,
   UtensilsCrossed,
   ImageIcon,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -470,6 +471,8 @@ function ProductInsumosEditor({
         )}
       </div>
 
+      {product.insumos.length === 0 && <QuickLinkStock product={product} />}
+
       {availableInsumos.length === 0 ? (
         insumos.length === 0 && (
           <p className="text-sm text-stone-400">
@@ -518,5 +521,82 @@ function ProductInsumosEditor({
         </form>
       )}
     </div>
+  );
+}
+
+function QuickLinkStock({ product }: { product: ProductDTO }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/products/${product.id}/insumos/quick-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentQty: Number(qty) || 0 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Não foi possível criar.");
+        return;
+      }
+      toast.success(`Estoque de "${product.name}" pronto — baixa 1 unidade a cada venda.`);
+      router.refresh();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2 rounded-lg border border-dashed border-brand-300 bg-brand-50 px-3 py-2 text-left text-sm font-medium text-brand-700 hover:bg-brand-100"
+      >
+        <Zap className="h-4 w-4 shrink-0" />
+        Vender direto do estoque (bebidas, embalados — sem preparo)
+      </button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-brand-300 bg-brand-50 p-3"
+    >
+      <p className="w-full text-xs text-brand-800">
+        Cria um insumo chamado &quot;{product.name}&quot; e já vincula 1 unidade por venda — ideal
+        pra item sem preparo (refrigerante, cerveja, embalado).
+      </p>
+      <div>
+        <label className="mb-1 block text-xs font-semibold tracking-wide text-stone-500 uppercase">
+          Quantidade em estoque
+        </label>
+        <Input
+          type="number"
+          step="1"
+          min="0"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          className="w-32"
+          placeholder="24"
+          autoFocus
+        />
+      </div>
+      <Button type="submit" size="sm" loading={loading} icon={<Zap />}>
+        Criar e vincular
+      </Button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="px-2 py-2 text-xs font-medium text-stone-500 hover:underline"
+      >
+        cancelar
+      </button>
+    </form>
   );
 }
