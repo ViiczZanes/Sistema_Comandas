@@ -786,6 +786,17 @@ model MercadoPagoIntegration {
   mpUserId String? // id da conta MP, confirmado via GET /users/me ao salvar
   nickname String? // snapshot do nome/e-mail da conta, pra tela sem rechamar a API
 
+  // true quando a conta conectada é um "usuário de teste" do Mercado Pago
+  // (sandbox) — detectado em GET /users/me (`tags` inclui "test_user" ou
+  // `test_data.test_user === true`, ver verifyMercadoPagoAccessToken).
+  // NÃO dá pra inferir isso pelo prefixo do token (usuário de teste tem
+  // token no formato normal "APP_USR-...", só o token de "Credenciais de
+  // teste" da própria aplicação usa o prefixo "TEST-") — por isso precisa
+  // ficar salvo aqui, não recalculado na hora. Usado pra: (1) mostrar o
+  // aviso "modo de teste" no Admin, (2) mercadoPagoProvider.ts escolher o
+  // payer.email certo (sandbox exige terminar em "@testuser.com").
+  isTest Boolean @default(false)
+
   // Liga/desliga sem apagar a credencial salva — enquanto desligado,
   // getPaymentProvider() cai pro mock mesmo com PIX escolhido.
   enabled Boolean @default(true)

@@ -28,6 +28,7 @@ export default async function MercadoPagoPage() {
                 enabled: integration.enabled,
                 lastErrorAt: integration.lastErrorAt ? integration.lastErrorAt.toISOString() : null,
                 lastErrorMessage: integration.lastErrorMessage,
+                isTest: integration.isTest,
               }
             : null
         }

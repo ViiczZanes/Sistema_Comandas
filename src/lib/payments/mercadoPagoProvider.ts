@@ -1,5 +1,5 @@
 import "server-only";
-import { getMercadoPagoAccessToken } from "./mercadoPagoAuth";
+import { getMercadoPagoCredential } from "./mercadoPagoAuth";
 import type { PaymentProvider, PaymentIntent, PaymentIntentStatus } from "./provider";
 
 // Provider real de PIX via Mercado Pago — implementa a mesma interface
@@ -49,6 +49,17 @@ function centsToReais(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+// O ambiente de sandbox do Mercado Pago exige `payer.email` terminando em
+// "@testuser.com" (produção não tem essa exigência) — descoberto testando
+// ao vivo contra o sandbox real. `isTest` vem da integração salva
+// (detectado em GET /users/me na hora de conectar, ver
+// mercadoPagoAuth.ts::verifyMercadoPagoAccessToken) — NÃO dá pra inferir
+// pelo prefixo do token: uma conta de "usuário de teste" tem token
+// "APP_USR-..." normal, igual produção.
+function payerEmailFor(isTest: boolean): string {
+  return isTest ? "cliente@testuser.com" : "cliente@comandas.app";
+}
+
 // Status possíveis de uma Order do Mercado Pago — mapeados pro nosso
 // pending|approved|declined. "processed" é o caso de sucesso confirmado
 // pela doc; os outros dois grupos são leituras razoáveis do texto público,
@@ -60,7 +71,7 @@ export const mercadoPagoProvider: PaymentProvider = {
   name: "mercadopago",
 
   async createIntent({ amountCents, checkoutId, restaurantId }): Promise<PaymentIntent> {
-    const accessToken = await getMercadoPagoAccessToken(restaurantId);
+    const { accessToken, isTest } = await getMercadoPagoCredential(restaurantId);
     const amount = centsToReais(amountCents);
 
     const res = await mpFetch(accessToken, "/v1/orders", {
@@ -73,8 +84,10 @@ export const mercadoPagoProvider: PaymentProvider = {
         processing_mode: "automatic",
         // Comandas por totem/pedir não coletam e-mail do cliente — a
         // Orders API exige um payer.email, então usamos um endereço
-        // genérico da plataforma. Não é usado pra contato nenhum.
-        payer: { email: "cliente@comandas.app" },
+        // genérico da plataforma (não é usado pra contato nenhum). Em
+        // conta de teste, precisa terminar em "@testuser.com" — ver
+        // payerEmailFor acima.
+        payer: { email: payerEmailFor(isTest) },
         transactions: {
           payments: [
             {
@@ -98,7 +111,7 @@ export const mercadoPagoProvider: PaymentProvider = {
   async checkStatus({ restaurantId, providerRef }): Promise<PaymentIntentStatus> {
     if (!providerRef) return "pending";
 
-    const accessToken = await getMercadoPagoAccessToken(restaurantId);
+    const { accessToken } = await getMercadoPagoCredential(restaurantId);
     const res = await mpFetch(accessToken, `/v1/orders/${providerRef}`);
     const data = await res.json();
 

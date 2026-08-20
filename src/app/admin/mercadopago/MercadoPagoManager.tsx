@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wifi, WifiOff, CheckCircle2, AlertTriangle, Unplug } from "lucide-react";
+import { Wifi, WifiOff, CheckCircle2, AlertTriangle, Unplug, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Field } from "@/components/ui/Input";
@@ -13,6 +13,7 @@ type IntegrationDTO = {
   enabled: boolean;
   lastErrorAt: string | null;
   lastErrorMessage: string | null;
+  isTest: boolean;
 } | null;
 
 function formatWhen(iso: string): string {
@@ -104,6 +105,13 @@ export function MercadoPagoManager({ integration }: { integration: IntegrationDT
             no painel do Mercado Pago. O token é criptografado e nunca mais
             é exibido depois de salvo.
           </p>
+          <p className="rounded-lg bg-stone-100 p-2.5 text-xs text-stone-600">
+            <strong>Quer testar sem usar dinheiro real?</strong> Cole a
+            credencial da aba <strong>Credenciais de teste</strong> (começa
+            com <code className="rounded bg-stone-200 px-1">TEST-</code>) em
+            vez da de produção — o sistema reconhece sozinho e ajusta o
+            pagamento pro ambiente de sandbox.
+          </p>
           <Field label="Access Token">
             <Input
               type="password"
@@ -138,6 +146,16 @@ export function MercadoPagoManager({ integration }: { integration: IntegrationDT
           </p>
         </div>
       </div>
+
+      {integration.isTest && (
+        <div className="flex items-center gap-2 rounded-xl bg-sky-50 p-3 text-xs text-sky-800">
+          <FlaskConical className="h-4 w-4 shrink-0" />
+          <p>
+            <strong>Modo de teste</strong> — essa é uma credencial de sandbox
+            do Mercado Pago. Nenhum pagamento cobra dinheiro real.
+          </p>
+        </div>
+      )}
 
       {integration.lastErrorMessage && (
         <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">

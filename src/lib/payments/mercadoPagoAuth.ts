@@ -20,10 +20,17 @@ export class MercadoPagoAuthError extends Error {
 }
 
 /** Confirma que um Access Token é válido antes de salvar — busca
- * GET /users/me pra devolver o nome/e-mail de exibição junto. */
+ * GET /users/me pra devolver o nome/e-mail de exibição junto, e detecta se
+ * é uma conta de teste (sandbox) do Mercado Pago (`tags` inclui
+ * "test_user", ou `test_data.test_user === true` — os dois apareceram na
+ * resposta real testando contra uma conta de teste; checa os dois pra não
+ * depender de um só). Confirmado ao vivo: o token dessa conta é
+ * "APP_USR-..." normal, **não** "TEST-..." — não dá pra usar o prefixo do
+ * token como heurística (só o token de "Credenciais de teste" da própria
+ * aplicação usa esse prefixo, um mecanismo diferente). */
 export async function verifyMercadoPagoAccessToken(
   accessToken: string
-): Promise<{ mpUserId: string; nickname: string | null }> {
+): Promise<{ mpUserId: string; nickname: string | null; isTest: boolean }> {
   const res = await fetch("https://api.mercadopago.com/users/me", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -34,17 +41,23 @@ export async function verifyMercadoPagoAccessToken(
     );
   }
   const data = await res.json();
-  return { mpUserId: String(data.id), nickname: data.nickname ?? data.email ?? null };
+  const isTest =
+    (Array.isArray(data.tags) && data.tags.includes("test_user")) ||
+    data.test_data?.test_user === true;
+  return { mpUserId: String(data.id), nickname: data.nickname ?? data.email ?? null, isTest: Boolean(isTest) };
 }
 
-/** Devolve o Access Token salvo do restaurante — só decifra, nenhuma
- * chamada de rede (não é um token OAuth, não precisa renovar). */
-export async function getMercadoPagoAccessToken(restaurantId: string): Promise<string> {
+/** Devolve o Access Token salvo do restaurante + se é conta de teste — só
+ * decifra, nenhuma chamada de rede (não é um token OAuth, não precisa
+ * renovar). */
+export async function getMercadoPagoCredential(
+  restaurantId: string
+): Promise<{ accessToken: string; isTest: boolean }> {
   const integration = await prisma.mercadoPagoIntegration.findUnique({ where: { restaurantId } });
   if (!integration || !integration.enabled) {
     throw new MercadoPagoAuthError("Integração com o Mercado Pago não está conectada.");
   }
-  return decryptSecret(integration.accessTokenEnc);
+  return { accessToken: decryptSecret(integration.accessTokenEnc), isTest: integration.isTest };
 }
 
 /** Registra o último erro real de PIX na integração, pra aparecer no card
