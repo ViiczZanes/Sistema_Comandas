@@ -13,7 +13,14 @@ export default async function ProductsPage() {
       include: {
         category: true,
         options: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
-        insumos: { include: { insumo: true }, orderBy: { insumo: { name: "asc" } } },
+        // Insumo excluído (soft-delete) some da receita exibida — o
+        // vínculo continua no banco pra não perder histórico, mas pra
+        // quem está vendo a tela é como se não existisse mais.
+        insumos: {
+          where: { insumo: { active: true } },
+          include: { insumo: true },
+          orderBy: { insumo: { name: "asc" } },
+        },
       },
     }),
     prisma.category.findMany({

@@ -32,8 +32,13 @@ export async function deductStockForOrderItems(
   const productIds = [...new Set(items.filter((i) => i.productId).map((i) => i.productId!))];
   if (productIds.length === 0) return [];
 
+  // `insumo.active: true` — um insumo excluído (soft-delete, ver
+  // DELETE /api/insumos/[id]) some da tela mas o vínculo com o produto
+  // continua existindo no banco pra não perder histórico; sem esse
+  // filtro, a venda continuaria baixando de um insumo "apagado" sem
+  // ninguém ver, o que contradiz o próprio ato de excluir.
   const links = await tx.productInsumo.findMany({
-    where: { productId: { in: productIds } },
+    where: { productId: { in: productIds }, insumo: { active: true } },
   });
   if (links.length === 0) return [];
 

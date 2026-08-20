@@ -9,7 +9,9 @@ export default async function InsumosPage() {
   const user = await requireUser(["ADMIN"]);
 
   const insumos = await prisma.insumo.findMany({
-    where: { restaurantId: user.restaurantId },
+    // Excluído (soft-delete, quando já tem movimentação no histórico)
+    // some da tela de verdade — só fica guardado no banco pra auditoria.
+    where: { restaurantId: user.restaurantId, active: true },
     include: {
       products: { include: { product: { select: { name: true } } } },
     },

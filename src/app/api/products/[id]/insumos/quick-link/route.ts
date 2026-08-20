@@ -32,7 +32,9 @@ export async function POST(
 
   const product = await prisma.product.findFirst({
     where: { id: productId, restaurantId: user.restaurantId },
-    include: { insumos: true },
+    // Vínculo com insumo excluído (soft-delete) não conta — pro produto,
+    // é como se a receita estivesse vazia de novo.
+    include: { insumos: { where: { insumo: { active: true } } } },
   });
   if (!product) {
     return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Wheat, ArrowDownCircle, ArrowUpCircle, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Wheat, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -34,6 +34,7 @@ export function InsumosManager({ insumos }: { insumos: InsumoDTO[] }) {
   const [form, setForm] = useState({ name: "", unit: "un", currentQty: "", lowStockAt: "" });
   const [loading, setLoading] = useState(false);
   const [movementFor, setMovementFor] = useState<string | null>(null);
+  const [editingFor, setEditingFor] = useState<string | null>(null);
 
   async function createInsumo(e: React.FormEvent) {
     e.preventDefault();
@@ -181,8 +182,22 @@ export function InsumosManager({ insumos }: { insumos: InsumoDTO[] }) {
                     <Button
                       size="sm"
                       variant="secondary"
+                      icon={<Pencil />}
+                      onClick={() => {
+                        setEditingFor(editingFor === insumo.id ? null : insumo.id);
+                        setMovementFor(null);
+                      }}
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
                       icon={<ArrowUpCircle />}
-                      onClick={() => setMovementFor(movementFor === insumo.id ? null : insumo.id)}
+                      onClick={() => {
+                        setMovementFor(movementFor === insumo.id ? null : insumo.id);
+                        setEditingFor(null);
+                      }}
                     >
                       Registrar movimento
                     </Button>
@@ -190,6 +205,9 @@ export function InsumosManager({ insumos }: { insumos: InsumoDTO[] }) {
                   </div>
                 </div>
 
+                {editingFor === insumo.id && (
+                  <EditForm insumo={insumo} onDone={() => setEditingFor(null)} />
+                )}
                 {movementFor === insumo.id && (
                   <MovementForm insumo={insumo} onDone={() => setMovementFor(null)} />
                 )}
@@ -278,6 +296,81 @@ function MovementForm({ insumo, onDone }: { insumo: InsumoDTO; onDone: () => voi
       <Button type="submit" size="sm" loading={loading} icon={<Plus />}>
         Registrar
       </Button>
+    </form>
+  );
+}
+
+function EditForm({ insumo, onDone }: { insumo: InsumoDTO; onDone: () => void }) {
+  const router = useRouter();
+  const [name, setName] = useState(insumo.name);
+  const [unit, setUnit] = useState(insumo.unit);
+  const [lowStockAt, setLowStockAt] = useState(String(insumo.lowStockAt));
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !unit.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/insumos/${insumo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          unit: unit.trim(),
+          lowStockAt: Number(lowStockAt) || 0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Não foi possível salvar.");
+        return;
+      }
+      toast.success("Insumo atualizado.");
+      onDone();
+      router.refresh();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="animate-slide-up mt-4 flex flex-wrap items-end gap-2 border-t border-stone-100 pt-4"
+    >
+      <Field label="Nome">
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="w-48" />
+      </Field>
+      <Field label="Unidade">
+        <Input
+          list="insumo-unit-suggestions"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+          className="w-28"
+        />
+      </Field>
+      <Field label="Alerta de estoque baixo">
+        <Input
+          type="number"
+          step="0.001"
+          min="0"
+          value={lowStockAt}
+          onChange={(e) => setLowStockAt(e.target.value)}
+          className="w-36"
+          placeholder="0"
+        />
+      </Field>
+      <Button type="submit" size="sm" loading={loading} icon={<Pencil />}>
+        Salvar
+      </Button>
+      <button
+        type="button"
+        onClick={onDone}
+        className="px-2 py-2 text-xs font-medium text-stone-500 hover:underline"
+      >
+        cancelar
+      </button>
     </form>
   );
 }
