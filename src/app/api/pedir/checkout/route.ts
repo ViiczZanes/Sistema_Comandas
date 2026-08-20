@@ -5,6 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { orderItemSchema, priceOrderItems } from "@/lib/orderItems";
 import { checkCoupon } from "@/lib/coupons";
 import { getPaymentProvider } from "@/lib/payments/provider";
+import { recordMercadoPagoError } from "@/lib/payments/mercadoPagoAuth";
 import { isValidPickupSlot } from "@/lib/pickupSlots";
 
 // Checkout compartilhado por delivery e retirada agendada — rota própria
@@ -107,7 +108,20 @@ export async function POST(request: Request) {
   });
 
   const provider = await getPaymentProvider(restaurantId, parsed.data.method);
-  const intent = await provider.createIntent({ amountCents, checkoutId: checkout.id, restaurantId });
+  let intent;
+  try {
+    intent = await provider.createIntent({ amountCents, checkoutId: checkout.id, restaurantId });
+  } catch (err) {
+    // Mesmo racional do totem (ver src/app/api/totem/checkout/route.ts) —
+    // uma falha do gateway não pode derrubar a rota sem resposta JSON.
+    const message = err instanceof Error ? err.message : String(err);
+    if (provider.name === "mercadopago") await recordMercadoPagoError(restaurantId, message);
+    await prisma.checkout.update({ where: { id: checkout.id }, data: { status: "declined" } });
+    return NextResponse.json(
+      { error: "Não foi possível iniciar o pagamento agora. Tente novamente em instantes." },
+      { status: 502 }
+    );
+  }
   await prisma.checkout.update({
     where: { id: checkout.id },
     data: { provider: provider.name, providerRef: intent.id },

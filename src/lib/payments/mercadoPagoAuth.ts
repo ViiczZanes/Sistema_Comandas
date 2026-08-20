@@ -46,3 +46,17 @@ export async function getMercadoPagoAccessToken(restaurantId: string): Promise<s
   }
   return decryptSecret(integration.accessTokenEnc);
 }
+
+/** Registra o último erro real de PIX na integração, pra aparecer no card
+ * âmbar de `/admin/mercadopago` — sem isso, uma falha na criação/consulta
+ * do pagamento não deixava rastro nenhum pro Administrador ver o motivo.
+ * Nunca lança (best-effort): se essa gravação falhar, não deve derrubar o
+ * checkout que já está tratando o erro original. */
+export async function recordMercadoPagoError(restaurantId: string, message: string): Promise<void> {
+  await prisma.mercadoPagoIntegration
+    .update({
+      where: { restaurantId },
+      data: { lastErrorAt: new Date(), lastErrorMessage: message.slice(0, 500) },
+    })
+    .catch(() => null);
+}

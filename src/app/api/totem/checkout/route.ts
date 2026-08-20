@@ -5,6 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { orderItemSchema, priceOrderItems } from "@/lib/orderItems";
 import { checkCoupon } from "@/lib/coupons";
 import { getPaymentProvider } from "@/lib/payments/provider";
+import { recordMercadoPagoError } from "@/lib/payments/mercadoPagoAuth";
 
 const bodySchema = z.object({
   restaurantId: z.string().min(1),
@@ -69,7 +70,24 @@ export async function POST(request: Request) {
   });
 
   const provider = await getPaymentProvider(restaurantId, parsed.data.method);
-  const intent = await provider.createIntent({ amountCents, checkoutId: checkout.id, restaurantId });
+  let intent;
+  try {
+    intent = await provider.createIntent({ amountCents, checkoutId: checkout.id, restaurantId });
+  } catch (err) {
+    // Nunca deixa uma falha do gateway (ex: token inválido/expirado, PIX
+    // fora do ar) derrubar a rota sem resposta JSON — isso é o que fazia o
+    // totem mostrar "Sem conexão com o sistema" mesmo com o servidor 100%
+    // no ar. Registra o erro na integração (aparece no card âmbar do
+    // Admin) e marca o checkout como recusado em vez de deixá-lo "pending"
+    // pra sempre.
+    const message = err instanceof Error ? err.message : String(err);
+    if (provider.name === "mercadopago") await recordMercadoPagoError(restaurantId, message);
+    await prisma.checkout.update({ where: { id: checkout.id }, data: { status: "declined" } });
+    return NextResponse.json(
+      { error: "Não foi possível iniciar o pagamento agora. Tente novamente em instantes." },
+      { status: 502 }
+    );
+  }
   await prisma.checkout.update({
     where: { id: checkout.id },
     data: { provider: provider.name, providerRef: intent.id },

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { nextOrderNumber } from "@/lib/orderNumber";
 import { publish } from "@/lib/events";
 import { getProviderByName } from "@/lib/payments/provider";
+import { recordMercadoPagoError } from "@/lib/payments/mercadoPagoAuth";
 import type { PricedItem } from "@/lib/orderItems";
 
 const EXPIRE_AFTER_MS = 5 * 60 * 1000;
@@ -39,7 +40,16 @@ export async function GET(
   }
 
   const provider = getProviderByName(checkout.provider);
-  const providerStatus = await provider.checkStatus(checkout);
+  let providerStatus;
+  try {
+    providerStatus = await provider.checkStatus(checkout);
+  } catch (err) {
+    if (provider.name === "mercadopago") {
+      const message = err instanceof Error ? err.message : String(err);
+      await recordMercadoPagoError(checkout.restaurantId, message);
+    }
+    return NextResponse.json({ status: "pending" });
+  }
 
   if (providerStatus === "pending") {
     return NextResponse.json({ status: "pending" });
