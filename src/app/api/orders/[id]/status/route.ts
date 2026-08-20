@@ -5,6 +5,7 @@ import { requireApiUser } from "@/lib/apiAuth";
 import { publish } from "@/lib/events";
 import { logAction } from "@/lib/auditLog";
 import { syncIfoodOrderStatus } from "@/lib/ifood/statusSync";
+import { restockCancelledOrder, maybeAutoRestock } from "@/lib/insumos";
 
 const ORDER: Record<string, number> = {
   NEW: 0,
@@ -104,6 +105,19 @@ export async function PATCH(
       entityId: order.id,
       summary: `Cancelou o pedido #${order.number} (${origin})`,
     });
+
+    // Devolve o estoque que esse pedido tinha consumido (ver
+    // src/lib/insumos.ts) — vira um AJUSTE de estorno, não apaga a baixa
+    // original. Se algum insumo voltar a ficar > 0, pode desmarcar
+    // sozinho o "esgotado" que o próprio sistema tinha marcado.
+    const restockedInsumoIds = await prisma.$transaction((tx) =>
+      restockCancelledOrder(tx, user.restaurantId, order.id)
+    );
+    try {
+      await maybeAutoRestock(user.restaurantId, restockedInsumoIds);
+    } catch (err) {
+      console.error("[insumos] falha ao aplicar auto-restock:", err);
+    }
   }
 
   // Pedido do iFood: avisa o lojista deles quando a Cozinha confirma,

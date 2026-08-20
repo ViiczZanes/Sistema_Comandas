@@ -55,6 +55,8 @@ model Restaurant {
   mercadoPagoIntegration MercadoPagoIntegration?
   cashShifts             CashShift[]
   cashMovements          CashMovement[]
+  insumos                Insumo[]
+  insumoMovements        InsumoMovement[]
 
   @@map("restaurants")
 }
@@ -128,6 +130,7 @@ model User {
   cashShiftsOpened  CashShift[]    @relation("CashShiftOpenedBy")
   cashShiftsClosed  CashShift[]    @relation("CashShiftClosedBy")
   cashMovements     CashMovement[] @relation("CashMovementRegisteredBy")
+  insumoMovements   InsumoMovement[]
 
   @@index([restaurantId])
   @@map("users")
@@ -261,6 +264,14 @@ model Product {
   // meio do serviço, a equipe marca rápido pelo PDV e desmarca quando
   // reabastecer. O produto continua cadastrado e ativo o tempo todo.
   soldOut     Boolean  @default(false)
+  // true só quando foi o CONTROLE DE ESTOQUE que marcou soldOut=true
+  // sozinho (insumo da receita zerou — ver src/lib/insumos.ts), nunca
+  // quando a equipe marcou manualmente. Distinção importa nos dois
+  // sentidos: reabastecer o insumo só desmarca automaticamente o que foi
+  // marcado automaticamente (um "esgotado" manual por outro motivo não
+  // pode voltar sozinho); e marcar/desmarcar manualmente pelo PDV sempre
+  // zera essa flag, porque virou uma decisão humana a partir daí.
+  soldOutAuto Boolean  @default(false)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -276,6 +287,7 @@ model Product {
   category Category        @relation(fields: [categoryId], references: [id])
   options  ProductOption[]
   orderItems OrderItem[]
+  insumos  ProductInsumo[]
 
   @@index([categoryId])
   @@index([restaurantId])
@@ -384,6 +396,7 @@ model Order {
   items   OrderItem[]
   payments Payment[]
   checkout Checkout?
+  insumoMovements InsumoMovement[]
 
   @@unique([restaurantId, number])
   @@unique([restaurantId, externalId])
@@ -808,4 +821,95 @@ model MercadoPagoIntegration {
   updatedAt DateTime @updatedAt
 
   @@map("mercadopago_integrations")
+}
+
+// ---------------------------------------------------------------------------
+// Controle de estoque de insumos — receita por produto (o quanto uma
+// unidade vendida consome de cada insumo), com baixa automática na criação
+// do pedido e "86" automático (soldOut) quando um insumo zera. Escopo desta
+// primeira versão: só o produto BASE consome insumo (adicionais/opções
+// continuam só somando preço, sem receita própria — pode evoluir depois se
+// fizer falta) e pedidos do iFood não são cobertos (o item do iFood não
+// referencia productId — catálogo sincronizado à parte, ver
+// src/lib/ifood/catalog.ts — então simplesmente não bate com nenhuma
+// receita, sem precisar de código especial pra isso).
+// ---------------------------------------------------------------------------
+
+model Insumo {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  // Texto livre (não enum) de propósito — restaurante usa unidades bem
+  // diferentes (kg, L, un, pacote, dúzia...); a tela sugere as mais comuns
+  // mas não trava. Só usado pra exibição/registro, nunca convertido.
+  unit         String   @default("un")
+  // Quantidade atual em estoque, na unidade acima. Float (não Int/cents
+  // como dinheiro em outros models) porque quantidade de insumo é
+  // inerentemente fracionária (2,5kg de tomate) — precisão de ponto
+  // flutuante é suficiente aqui, diferente de dinheiro.
+  currentQty Float   @default(0)
+  // Abaixo disso, a tela de insumos destaca "estoque baixo" — só um alerta
+  // visual, nunca bloqueia venda (só o auto-86 em zero/negativo faz isso).
+  lowStockAt Float   @default(0)
+  active     Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  products  ProductInsumo[]
+  movements InsumoMovement[]
+
+  @@index([restaurantId])
+  @@map("insumos")
+}
+
+// Receita: quanto uma unidade vendida de um Product consome de um Insumo.
+// Ex: "X-Burger" consome 0,15 (kg) de "Carne" + 1 (un) de "Pão".
+model ProductInsumo {
+  id         String @id @default(cuid())
+  productId  String
+  insumoId   String
+  qtyPerUnit Float
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  insumo  Insumo  @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, insumoId])
+  @@index([insumoId])
+  @@map("product_insumos")
+}
+
+enum InsumoMovementType {
+  ENTRADA // compra/reposição — sempre soma
+  AJUSTE  // correção manual (perda, quebra, contagem, estorno de cancelamento) — soma ou subtrai
+  VENDA   // baixa automática por pedido — sempre subtrai
+}
+
+model InsumoMovement {
+  id           String             @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  insumoId     String
+  insumo       Insumo             @relation(fields: [insumoId], references: [id])
+  type         InsumoMovementType
+  // Sempre já com sinal (negativo em VENDA, positivo em ENTRADA, qualquer
+  // sinal em AJUSTE) — soma direto em Insumo.currentQty, sem precisar
+  // reconstituir a partir de before/after.
+  delta   Float
+  reason  String?
+  // Nulo em VENDA (baixa automática, sem operador humano) — ver
+  // logAction, mesmo padrão de "Sistema" no log de auditoria.
+  userId  String?
+  user    User?   @relation(fields: [userId], references: [id])
+  // Nulo em ENTRADA/AJUSTE manual — só preenchido em VENDA (e no estorno
+  // de AJUSTE que reverte uma VENDA cancelada), pra rastrear qual pedido
+  // gerou aquela baixa.
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([restaurantId])
+  @@index([insumoId])
+  @@map("insumo_movements")
 }

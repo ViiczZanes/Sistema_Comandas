@@ -4,6 +4,7 @@ import { nextOrderNumber } from "@/lib/orderNumber";
 import { publish } from "@/lib/events";
 import { getProviderByName } from "@/lib/payments/provider";
 import { recordMercadoPagoError } from "@/lib/payments/mercadoPagoAuth";
+import { deductStockForOrderItems, applyAutoSoldOut } from "@/lib/insumos";
 import type { PricedItem } from "@/lib/orderItems";
 
 const EXPIRE_AFTER_MS = 5 * 60 * 1000;
@@ -70,6 +71,7 @@ export async function GET(
     ? await prisma.coupon.findUnique({ where: { id: checkout.couponId } })
     : null;
 
+  let depletedInsumoIds: string[] = [];
   const result = await prisma.$transaction(async (tx) => {
     const number = await nextOrderNumber(tx, checkout.restaurantId);
     const order = await tx.order.create({
@@ -122,8 +124,23 @@ export async function GET(
       data: { status: "approved", orderId: order.id },
     });
 
+    depletedInsumoIds = await deductStockForOrderItems(
+      tx,
+      checkout.restaurantId,
+      order.id,
+      items.map((i) => ({ productId: i.productId, quantity: i.quantity }))
+    );
+
     return order;
   });
+
+  // Aguarda (não fire-and-forget) — ver comentário equivalente em
+  // src/app/api/public/orders/route.ts.
+  try {
+    await applyAutoSoldOut(checkout.restaurantId, depletedInsumoIds);
+  } catch (err) {
+    console.error("[insumos] falha ao aplicar auto-86:", err);
+  }
 
   publish(`kitchen:${checkout.restaurantId}`, { type: "order-created", orderId: result.id });
   publish(`pdv:${checkout.restaurantId}`, { type: "order-created", orderId: result.id });

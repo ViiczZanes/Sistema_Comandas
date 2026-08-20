@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { nextOrderNumber } from "@/lib/orderNumber";
 import { recomputeTableStatus } from "@/lib/tableStatus";
 import { publish } from "@/lib/events";
+import { deductStockForOrderItems, applyAutoSoldOut } from "@/lib/insumos";
 
 const itemSchema = z.object({
   productId: z.string().min(1),
@@ -82,6 +83,17 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
+    // Bug pré-existente encontrado testando o controle de estoque: esse
+    // canal (pedido do cliente pela mesa) nunca checava soldOut — dava pra
+    // pedir um item marcado "Esgotado" (manual ou pelo auto-86 do
+    // controle de estoque) por aqui, mesmo funcionando certinho no totem/
+    // pedir (que usam src/lib/orderItems.ts, que já checa isso).
+    if (product.soldOut) {
+      return NextResponse.json(
+        { error: `"${product.name}" está esgotado no momento.` },
+        { status: 409 }
+      );
+    }
     for (const optionId of item.optionIds) {
       if (!product.options.some((o) => o.id === optionId && o.active)) {
         return NextResponse.json(
@@ -92,6 +104,7 @@ export async function POST(request: Request) {
     }
   }
 
+  let depletedInsumoIds: string[] = [];
   const result = await prisma.$transaction(async (tx) => {
     let orderTotal = 0;
     const itemsData = items.map((item) => {
@@ -157,8 +170,25 @@ export async function POST(request: Request) {
 
     await recomputeTableStatus(tx, table.id);
 
+    depletedInsumoIds = await deductStockForOrderItems(
+      tx,
+      table.restaurantId,
+      order.id,
+      itemsData.map((i) => ({ productId: i.productId, quantity: i.quantity }))
+    );
+
     return order;
   });
+
+  // Aguarda (não fire-and-forget) — precisa terminar ANTES de responder,
+  // senão um pedido seguinte quase simultâneo pode passar pela checagem de
+  // soldOut antes desta marcação terminar (só a chamada de rede pro iFood
+  // lá dentro continua best-effort/em background).
+  try {
+    await applyAutoSoldOut(table.restaurantId, depletedInsumoIds);
+  } catch (err) {
+    console.error("[insumos] falha ao aplicar auto-86:", err);
+  }
 
   publish(`kitchen:${table.restaurantId}`, { type: "order-created", orderId: result.id });
   publish(`pdv:${table.restaurantId}`, {

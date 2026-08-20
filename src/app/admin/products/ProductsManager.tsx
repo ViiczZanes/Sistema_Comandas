@@ -27,6 +27,12 @@ type OptionDTO = {
   active: boolean;
 };
 
+type ProductInsumoDTO = {
+  id: string;
+  qtyPerUnit: number;
+  insumo: { id: string; name: string; unit: string };
+};
+
 type ProductDTO = {
   id: string;
   name: string;
@@ -35,18 +41,23 @@ type ProductDTO = {
   image: string | null;
   active: boolean;
   soldOut: boolean;
+  soldOutAuto: boolean;
   category: { id: string; name: string };
   options: OptionDTO[];
+  insumos: ProductInsumoDTO[];
 };
 
 type CategoryDTO = { id: string; name: string };
+type InsumoOptionDTO = { id: string; name: string; unit: string };
 
 export function ProductsManager({
   products,
   categories,
+  insumos,
 }: {
   products: ProductDTO[];
   categories: CategoryDTO[];
+  insumos: InsumoOptionDTO[];
 }) {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -58,6 +69,7 @@ export function ProductsManager({
   });
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [expandedInsumos, setExpandedInsumos] = useState<string | null>(null);
 
   async function createProduct(e: React.FormEvent) {
     e.preventDefault();
@@ -193,7 +205,9 @@ export function ProductsManager({
                         {product.active ? "Ativo" : "Inativo"}
                       </Badge>
                       {product.soldOut && (
-                        <Badge tone="red">Esgotado hoje</Badge>
+                        <Badge tone="red">
+                          {product.soldOutAuto ? "Esgotado (estoque zerou)" : "Esgotado hoje"}
+                        </Badge>
                       )}
                       <span className="text-xs text-stone-400">
                         {product.category.name}
@@ -228,6 +242,23 @@ export function ProductsManager({
                   <Button
                     size="sm"
                     variant="secondary"
+                    icon={
+                      <ChevronDown
+                        className={cn(
+                          "transition-transform",
+                          expandedInsumos === product.id && "rotate-180"
+                        )}
+                      />
+                    }
+                    onClick={() =>
+                      setExpandedInsumos(expandedInsumos === product.id ? null : product.id)
+                    }
+                  >
+                    Receita ({product.insumos.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
                     onClick={() => toggleActive(product)}
                   >
                     {product.active ? "Desativar" : "Ativar"}
@@ -242,6 +273,9 @@ export function ProductsManager({
               </div>
 
               {expanded === product.id && <ProductOptionsEditor product={product} />}
+              {expandedInsumos === product.id && (
+                <ProductInsumosEditor product={product} insumos={insumos} />
+              )}
             </Card>
           ))}
         </div>
@@ -355,6 +389,134 @@ function ProductOptionsEditor({ product }: { product: ProductDTO }) {
           Adicionar
         </Button>
       </form>
+    </div>
+  );
+}
+
+function ProductInsumosEditor({
+  product,
+  insumos,
+}: {
+  product: ProductDTO;
+  insumos: InsumoOptionDTO[];
+}) {
+  const router = useRouter();
+  const availableInsumos = insumos.filter(
+    (i) => !product.insumos.some((link) => link.insumo.id === i.id)
+  );
+  const [insumoId, setInsumoId] = useState(availableInsumos[0]?.id ?? "");
+  const [qty, setQty] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function addLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!insumoId || !qty || Number(qty) <= 0) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/products/${product.id}/insumos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ insumoId, qtyPerUnit: Number(qty) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Não foi possível adicionar.");
+        return;
+      }
+      toast.success("Insumo adicionado à receita.");
+      setQty("");
+      router.refresh();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeLink(linkId: string) {
+    await fetch(`/api/product-insumos/${linkId}`, { method: "DELETE" });
+    router.refresh();
+  }
+
+  return (
+    <div className="animate-slide-up mt-4 space-y-3 border-t border-stone-100 pt-4">
+      <p className="text-xs text-stone-500">
+        Quanto uma unidade vendida de &quot;{product.name}&quot; consome de cada insumo — a
+        baixa acontece sozinha a cada pedido (ver{" "}
+        <a href="/admin/insumos" className="underline">
+          Insumos
+        </a>
+        ).
+      </p>
+      <div className="space-y-1.5">
+        {product.insumos.map((link) => (
+          <div
+            key={link.id}
+            className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-1.5 text-sm"
+          >
+            <span>
+              {link.insumo.name} — {link.qtyPerUnit} {link.insumo.unit} por unidade
+            </span>
+            <button
+              onClick={() => removeLink(link.id)}
+              className="text-xs font-medium text-red-600 hover:underline"
+            >
+              remover
+            </button>
+          </div>
+        ))}
+        {product.insumos.length === 0 && (
+          <p className="text-sm text-stone-400">
+            Nenhum insumo vinculado — esse produto não baixa estoque ainda.
+          </p>
+        )}
+      </div>
+
+      {availableInsumos.length === 0 ? (
+        insumos.length === 0 && (
+          <p className="text-sm text-stone-400">
+            Cadastre insumos em{" "}
+            <a href="/admin/insumos" className="underline">
+              Insumos
+            </a>{" "}
+            pra poder vincular aqui.
+          </p>
+        )
+      ) : (
+        <form onSubmit={addLink} className="flex flex-wrap items-end gap-2">
+          <div>
+            <label className="mb-1 block text-xs font-semibold tracking-wide text-stone-500 uppercase">
+              Insumo
+            </label>
+            <Select
+              value={insumoId}
+              onChange={(e) => setInsumoId(e.target.value)}
+              className="w-48"
+            >
+              {availableInsumos.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name} ({i.unit})
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold tracking-wide text-stone-500 uppercase">
+              Qtd. por unidade
+            </label>
+            <Input
+              type="number"
+              step="0.001"
+              min="0"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              className="w-28"
+              placeholder="0.15"
+            />
+          </div>
+          <Button type="submit" size="sm" loading={loading} icon={<Plus />}>
+            Adicionar
+          </Button>
+        </form>
+      )}
     </div>
   );
 }

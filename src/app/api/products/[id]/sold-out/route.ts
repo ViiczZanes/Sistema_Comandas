@@ -25,7 +25,10 @@ export async function PATCH(
 
   const { count } = await prisma.product.updateMany({
     where: { id, restaurantId: user.restaurantId },
-    data: { soldOut: parsed.data.soldOut },
+    // Toggle manual sempre zera soldOutAuto — a partir daqui virou uma
+    // decisão da equipe, não mais algo que o controle de estoque pode
+    // desfazer sozinho reabastecendo um insumo (ver src/lib/insumos.ts).
+    data: { soldOut: parsed.data.soldOut, soldOutAuto: false },
   });
 
   if (count === 0) {

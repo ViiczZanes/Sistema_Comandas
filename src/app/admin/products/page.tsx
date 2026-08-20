@@ -6,18 +6,24 @@ import { ProductsManager } from "./ProductsManager";
 
 export default async function ProductsPage() {
   const user = await requireUser(["ADMIN"]);
-  const [products, categories] = await Promise.all([
+  const [products, categories, insumos] = await Promise.all([
     prisma.product.findMany({
       where: { restaurantId: user.restaurantId },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
         category: true,
         options: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
+        insumos: { include: { insumo: true }, orderBy: { insumo: { name: "asc" } } },
       },
     }),
     prisma.category.findMany({
       where: { restaurantId: user.restaurantId },
       orderBy: { name: "asc" },
+    }),
+    prisma.insumo.findMany({
+      where: { restaurantId: user.restaurantId, active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, unit: true },
     }),
   ]);
 
@@ -33,7 +39,7 @@ export default async function ProductsPage() {
           Cadastre uma categoria antes de adicionar produtos.
         </p>
       ) : (
-        <ProductsManager products={products} categories={categories} />
+        <ProductsManager products={products} categories={categories} insumos={insumos} />
       )}
     </div>
   );
