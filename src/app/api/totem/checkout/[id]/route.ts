@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { nextOrderNumber } from "@/lib/orderNumber";
 import { publish } from "@/lib/events";
-import { getPaymentProvider } from "@/lib/payments/provider";
+import { getProviderByName } from "@/lib/payments/provider";
 import type { PricedItem } from "@/lib/orderItems";
 
 const EXPIRE_AFTER_MS = 5 * 60 * 1000;
@@ -40,8 +40,8 @@ export async function GET(
     return NextResponse.json({ status: "expired" });
   }
 
-  const provider = getPaymentProvider();
-  const providerStatus = await provider.checkStatus(checkout.id, checkout.createdAt);
+  const provider = getProviderByName(checkout.provider);
+  const providerStatus = await provider.checkStatus(checkout);
 
   if (providerStatus === "pending") {
     return NextResponse.json({ status: "pending" });

@@ -51,9 +51,10 @@ model Restaurant {
   auditLogs AuditLog[]
   coupons   Coupon[]
   checkouts Checkout[]
-  ifoodIntegration IfoodIntegration?
-  cashShifts    CashShift[]
-  cashMovements CashMovement[]
+  ifoodIntegration       IfoodIntegration?
+  mercadoPagoIntegration MercadoPagoIntegration?
+  cashShifts             CashShift[]
+  cashMovements          CashMovement[]
 
   @@map("restaurants")
 }
@@ -755,4 +756,45 @@ model IfoodIntegration {
   updatedAt DateTime @updatedAt
 
   @@map("ifood_integrations")
+}
+
+// ---------------------------------------------------------------------------
+// Integração com o Mercado Pago — PIX real no totem e no /pedir (ver
+// src/lib/payments/). Cada restaurante conecta a PRÓPRIA conta via OAuth
+// (fluxo padrão por redirecionamento, diferente do "device code" do
+// iFood): o dinheiro cai direto pra conta dele, a plataforma nunca
+// custodia nada — não tem split/comissão. `accessTokenEnc`/
+// `refreshTokenEnc` são da conta do restaurante; o client_id/secret DA
+// APLICAÇÃO (identifica a plataforma Comandas como um todo, não é por
+// restaurante) fica só no .env, nunca no banco.
+// ---------------------------------------------------------------------------
+
+model MercadoPagoIntegration {
+  restaurantId String     @id
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  // AES-256-GCM (iv:tag:ciphertext) — ver src/lib/crypto.ts. Colado
+  // diretamente pelo Administrador (Suas integrações → Credenciais no
+  // painel do Mercado Pago) — não é obtido via OAuth (o app do Comandas
+  // não é registrado como "Plataforma" no Mercado Pago, então não expõe
+  // Client ID/Secret; um Access Token colado direto, como o próprio
+  // iFood também aceita como client secret, resolve sem precisar disso).
+  // Esse token não expira num prazo fixo como um token OAuth — só muda
+  // se o próprio restaurante regenerar no painel dele.
+  accessTokenEnc String
+
+  mpUserId String? // id da conta MP, confirmado via GET /users/me ao salvar
+  nickname String? // snapshot do nome/e-mail da conta, pra tela sem rechamar a API
+
+  // Liga/desliga sem apagar a credencial salva — enquanto desligado,
+  // getPaymentProvider() cai pro mock mesmo com PIX escolhido.
+  enabled Boolean @default(true)
+
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("mercadopago_integrations")
 }

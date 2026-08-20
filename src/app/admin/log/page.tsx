@@ -8,6 +8,7 @@ import {
   Tag,
   ShoppingBag,
   Banknote,
+  CreditCard,
 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -34,6 +35,9 @@ const ACTION_META: Record<string, { icon: typeof XCircle; tone: string }> = {
   "shift.open": { icon: Banknote, tone: "bg-emerald-100 text-emerald-700" },
   "shift.close": { icon: Banknote, tone: "bg-stone-200 text-stone-600" },
   "shift.movement": { icon: Banknote, tone: "bg-amber-100 text-amber-700" },
+  "mercadopago.connect": { icon: CreditCard, tone: "bg-sky-100 text-sky-700" },
+  "mercadopago.disconnect": { icon: CreditCard, tone: "bg-red-100 text-red-600" },
+  "mercadopago.toggle": { icon: CreditCard, tone: "bg-sky-100 text-sky-700" },
 };
 
 function formatWhen(date: Date): string {

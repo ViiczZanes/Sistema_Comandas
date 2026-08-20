@@ -106,8 +106,8 @@ export async function POST(request: Request) {
     },
   });
 
-  const provider = getPaymentProvider();
-  const intent = await provider.createIntent(amountCents, checkout.id);
+  const provider = await getPaymentProvider(restaurantId, parsed.data.method);
+  const intent = await provider.createIntent({ amountCents, checkoutId: checkout.id, restaurantId });
   await prisma.checkout.update({
     where: { id: checkout.id },
     data: { provider: provider.name, providerRef: intent.id },

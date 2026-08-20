@@ -306,6 +306,12 @@ export function SettingsManager({
               >
                 Conectar com o iFood <ExternalLink className="h-3.5 w-3.5" />
               </Link>
+              <Link
+                href="/admin/mercadopago"
+                className="flex items-center gap-1 text-brand-600 hover:underline"
+              >
+                Conectar com o Mercado Pago <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
             </div>
           </Field>
 

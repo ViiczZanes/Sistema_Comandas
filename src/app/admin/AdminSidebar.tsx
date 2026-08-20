@@ -15,6 +15,7 @@ import {
   Tag,
   ShoppingBag,
   Wallet,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -29,6 +30,7 @@ const ADMIN_LINKS = [
   { href: "/admin/caixa", label: "Caixa", icon: Wallet },
   { href: "/admin/users", label: "Usuários", icon: Users },
   { href: "/admin/ifood", label: "iFood", icon: ShoppingBag },
+  { href: "/admin/mercadopago", label: "Mercado Pago", icon: CreditCard },
   { href: "/admin/settings", label: "Configurações", icon: Palette },
   { href: "/admin/log", label: "Log de auditoria", icon: ScrollText },
 ];
