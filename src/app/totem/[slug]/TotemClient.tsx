@@ -94,6 +94,13 @@ export function TotemClient({
     method: PaymentMethod;
     qrCodeBase64?: string;
   } | null>(null);
+  // Guarda o método escolhido assim que o cliente aperta o botão — a tela
+  // "paying" precisa dele ANTES de `checkout` existir (o POST pro
+  // /api/totem/checkout ainda está em andamento nesse instante). Sem
+  // isso, `checkout?.method` fica `undefined` nessa janela e a tela caía
+  // no "senão" (bug real: clicar PIX mostrava rapidinho a tela de cartão
+  // de débito, até o checkout real chegar e corrigir sozinho).
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [orderNumber, setOrderNumber] = useState<number | null>(null);
 
   const [couponInput, setCouponInput] = useState("");
@@ -160,6 +167,7 @@ export function TotemClient({
     setCoupon(null);
     setCouponInput("");
     setCouponError(null);
+    setSelectedMethod(null);
   }
 
   function addToCart(line: Omit<CartLine, "key">) {
@@ -180,6 +188,7 @@ export function TotemClient({
   }
 
   async function startPayment(method: PaymentMethod) {
+    setSelectedMethod(method);
     setScreen("paying");
     setErrorMessage(null);
     try {
@@ -295,7 +304,11 @@ export function TotemClient({
   }
 
   if (screen === "paying") {
-    const isPix = checkout?.method === "PIX";
+    // Enquanto o checkout ainda não voltou do servidor, `checkout` é
+    // `null` — usa o método que o cliente escolheu (guardado na hora do
+    // clique) pra essa janela não mostrar a tela errada.
+    const activeMethod = checkout?.method ?? selectedMethod;
+    const isPix = activeMethod === "PIX";
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-900 px-6 text-center text-white">
         {isPix ? (
@@ -329,7 +342,7 @@ export function TotemClient({
             </div>
             <div>
               <p className="text-2xl font-bold">
-                Insira ou aproxime o cartão de {checkout?.method === "CREDIT" ? "crédito" : "débito"}
+                Insira ou aproxime o cartão de {activeMethod === "CREDIT" ? "crédito" : "débito"}
               </p>
               <p className="mt-1 text-stone-400">
                 Total: {formatCents(checkout?.amountCents ?? total)}

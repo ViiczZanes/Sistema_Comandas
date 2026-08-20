@@ -114,6 +114,11 @@ export function PedirClient({
     method: PaymentMethod;
     qrCodeBase64?: string;
   } | null>(null);
+  // Guarda o método escolhido assim que o cliente aperta o botão — mesmo
+  // fix de src/app/totem/[slug]/TotemClient.tsx (ver comentário lá): sem
+  // isso, a tela "paying" mostrava rapidinho o método errado enquanto o
+  // POST de checkout ainda estava em andamento.
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [orderNumber, setOrderNumber] = useState<number | null>(null);
 
   const [couponInput, setCouponInput] = useState("");
@@ -176,6 +181,7 @@ export function PedirClient({
     setCouponError(null);
     setAddress("");
     setScheduledFor(null);
+    setSelectedMethod(null);
   }
 
   function addToCart(line: Omit<CartLine, "key">) {
@@ -217,6 +223,7 @@ export function PedirClient({
 
   async function startPayment(method: PaymentMethod) {
     if (!channel) return;
+    setSelectedMethod(method);
     setScreen("paying");
     setErrorMessage(null);
     try {
@@ -362,7 +369,11 @@ export function PedirClient({
   }
 
   if (screen === "paying") {
-    const isPix = checkout?.method === "PIX";
+    // Enquanto o checkout ainda não voltou do servidor, `checkout` é
+    // `null` — usa o método escolhido na hora do clique pra essa janela
+    // não mostrar a tela errada (ver comentário no state acima).
+    const activeMethod = checkout?.method ?? selectedMethod;
+    const isPix = activeMethod === "PIX";
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-900 px-6 text-center text-white">
         {isPix ? (
@@ -396,7 +407,7 @@ export function PedirClient({
             </div>
             <div>
               <p className="text-2xl font-bold">
-                Confirme o pagamento no cartão de {checkout?.method === "CREDIT" ? "crédito" : "débito"}
+                Confirme o pagamento no cartão de {activeMethod === "CREDIT" ? "crédito" : "débito"}
               </p>
               <p className="mt-1 text-stone-400">
                 Total: {formatCents(checkout?.amountCents ?? total)}
