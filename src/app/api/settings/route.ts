@@ -18,6 +18,8 @@ const bodySchema = z.object({
   qrLogoInCenter: z.boolean().optional(),
   serviceFeeEnabled: z.boolean().optional(),
   serviceFeePercent: z.number().int().min(0).max(100).optional(),
+  couvertEnabled: z.boolean().optional(),
+  couvertCents: z.number().int().min(0).optional(),
   kioskEnabled: z.boolean().optional(),
   deliveryEnabled: z.boolean().optional(),
   scheduledPickupEnabled: z.boolean().optional(),
@@ -59,6 +61,12 @@ export async function PATCH(request: Request) {
     data.serviceFeePercent !== before.serviceFeePercent
   ) {
     changes.push(`percentual da taxa ${before.serviceFeePercent}% → ${settings.serviceFeePercent}%`);
+  }
+  if (data.couvertEnabled !== undefined && data.couvertEnabled !== before.couvertEnabled) {
+    changes.push(settings.couvertEnabled ? "couvert ativado" : "couvert desativado");
+  }
+  if (data.couvertCents !== undefined && data.couvertCents !== before.couvertCents) {
+    changes.push(`valor do couvert ${before.couvertCents / 100} → ${settings.couvertCents / 100}`);
   }
   const otherFieldsChanged = (["restaurantName", "logoUrl", "brandColorHex", "qrDotStyle", "qrLogoInCenter"] as const)
     .some((key) => data[key] !== undefined && data[key] !== before[key]);

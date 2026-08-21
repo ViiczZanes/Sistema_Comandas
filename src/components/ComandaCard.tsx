@@ -69,6 +69,7 @@ type ComandaDTO = {
   payments: { id: string; method: PaymentMethod; amountCents: number }[];
   couponCode: string | null;
   discountCents: number;
+  couvertCents: number;
 };
 
 const PAYMENT_METHODS: { value: SelectablePaymentMethod; label: string; icon: typeof Banknote }[] = [
@@ -97,7 +98,7 @@ export function ComandaCard({
   const [loading, setLoading] = useState(false);
 
   const grossCents = comanda.orders.reduce((a, o) => a + o.totalCents, 0);
-  const totalCents = Math.max(grossCents - comanda.discountCents, 0);
+  const totalCents = Math.max(grossCents + comanda.couvertCents - comanda.discountCents, 0);
   const paidCents = comanda.payments.reduce((a, p) => a + p.amountCents, 0);
   const balanceCents = Math.max(totalCents - paidCents, 0);
   const [amount, setAmount] = useState(() => (balanceCents / 100).toFixed(2));
@@ -159,7 +160,7 @@ export function ComandaCard({
         toast.error(data.error ?? "Não foi possível aplicar o cupom.");
         return;
       }
-      const newBalance = Math.max(grossCents - data.discountCents - paidCents, 0);
+      const newBalance = Math.max(grossCents + comanda.couvertCents - data.discountCents - paidCents, 0);
       setAmount((newBalance / 100).toFixed(2));
       setCouponInput("");
       toast.success(`Cupom ${data.couponCode} aplicado.`);
@@ -174,7 +175,7 @@ export function ComandaCard({
     try {
       const res = await fetch(`/api/comandas/${comanda.id}/coupon`, { method: "DELETE" });
       if (res.ok) {
-        const newBalance = Math.max(grossCents - paidCents, 0);
+        const newBalance = Math.max(grossCents + comanda.couvertCents - paidCents, 0);
         setAmount((newBalance / 100).toFixed(2));
         router.refresh();
       }
@@ -260,6 +261,7 @@ export function ComandaCard({
         <div className="text-right">
           <p className="text-xs text-stone-400">
             Total {formatCents(grossCents)}
+            {comanda.couvertCents > 0 ? ` · Couvert ${formatCents(comanda.couvertCents)}` : ""}
             {comanda.discountCents > 0
               ? ` · Cupom ${comanda.couponCode} −${formatCents(comanda.discountCents)}`
               : ""}

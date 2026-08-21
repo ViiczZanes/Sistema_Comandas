@@ -83,6 +83,14 @@ model Settings {
   serviceFeeEnabled Boolean @default(false)
   serviceFeePercent Int     @default(10)
 
+  // Couvert — valor fixo por comanda (não percentual, diferente da taxa de
+  // serviço), desligado até o dono ativar. Diferente da taxa de serviço,
+  // o cliente VÊ o couvert na própria conta desde o início (é uma cobrança
+  // conhecida, não gorjeta) — ver Comanda.couvertCents pro snapshot por
+  // atendimento.
+  couvertEnabled Boolean @default(false)
+  couvertCents   Int     @default(0)
+
   // Totem de autoatendimento (balcão) — desligado até o dono ativar.
   kioskEnabled Boolean @default(false)
 
@@ -219,6 +227,15 @@ model Comanda {
   coupon        Coupon? @relation(fields: [couponId], references: [id])
   couponCode    String?
   discountCents Int     @default(0)
+
+  // Snapshot do couvert (Settings.couvertCents) desta rodada — gravado só
+  // quando a comanda senta numa mesa pela primeira vez neste atendimento
+  // (ver `if (!comanda.currentTableId)` em /api/public/orders), não na
+  // criação do cartão em si (comanda recém-cadastrada, parada numa
+  // gaveta, não deve nada a ninguém ainda) nem em canais sem mesa física
+  // (totem/entrega/agendado usam Checkout, não Comanda). Zerado junto com
+  // discountCents sempre que a comanda recicla.
+  couvertCents Int @default(0)
 
   orders    Order[]
   payments  Payment[]

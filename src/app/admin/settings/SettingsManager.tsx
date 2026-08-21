@@ -10,6 +10,7 @@ import { Input, Select, Field } from "@/components/ui/Input";
 import { Logo } from "@/components/Logo";
 import { StyledQrCode } from "@/components/StyledQrCode";
 import { deriveBrandSteps } from "@/lib/brandColor";
+import { reaisToCents } from "@/lib/money";
 import { QR_DOT_STYLE_LABEL, QR_DOT_STYLES, type QrDotStyle } from "@/lib/qrStyle";
 import { toast } from "@/lib/toastStore";
 
@@ -21,6 +22,8 @@ type SettingsDTO = {
   qrLogoInCenter: boolean;
   serviceFeeEnabled: boolean;
   serviceFeePercent: number;
+  couvertEnabled: boolean;
+  couvertCents: number;
   kioskEnabled: boolean;
   deliveryEnabled: boolean;
   scheduledPickupEnabled: boolean;
@@ -47,6 +50,8 @@ export function SettingsManager({
     qrLogoInCenter: settings.qrLogoInCenter,
     serviceFeeEnabled: settings.serviceFeeEnabled,
     serviceFeePercent: settings.serviceFeePercent,
+    couvertEnabled: settings.couvertEnabled,
+    couvertReais: (settings.couvertCents / 100).toFixed(2),
     kioskEnabled: settings.kioskEnabled,
     deliveryEnabled: settings.deliveryEnabled,
     scheduledPickupEnabled: settings.scheduledPickupEnabled,
@@ -73,6 +78,11 @@ export function SettingsManager({
       toast.error("A taxa de serviço precisa estar entre 0 e 100%.");
       return;
     }
+    const couvertCents = reaisToCents(Number(form.couvertReais) || 0);
+    if (form.couvertEnabled && couvertCents <= 0) {
+      toast.error("Informe um valor de couvert maior que zero.");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/settings", {
@@ -86,6 +96,8 @@ export function SettingsManager({
           qrLogoInCenter: form.qrLogoInCenter,
           serviceFeeEnabled: form.serviceFeeEnabled,
           serviceFeePercent: form.serviceFeePercent,
+          couvertEnabled: form.couvertEnabled,
+          couvertCents,
           kioskEnabled: form.kioskEnabled,
           deliveryEnabled: form.deliveryEnabled,
           scheduledPickupEnabled: form.scheduledPickupEnabled,
@@ -217,6 +229,43 @@ export function SettingsManager({
                   <span className="text-sm text-stone-500">
                     % somado ao total na hora de fechar a comanda no PDV — não
                     aparece na conta que o cliente vê antes disso.
+                  </span>
+                </div>
+              )}
+            </div>
+          </Field>
+
+          <Field label="Taxa de couvert">
+            <div className="space-y-2.5">
+              <label className="flex items-center gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.couvertEnabled}
+                  onChange={(e) =>
+                    setForm({ ...form, couvertEnabled: e.target.checked })
+                  }
+                  className="h-4 w-4 accent-brand-600"
+                />
+                <span className="text-stone-700">
+                  Cobrar couvert por comanda
+                </span>
+              </label>
+              {form.couvertEnabled && (
+                <div className="flex items-center gap-2 pl-7">
+                  <span className="text-sm text-stone-500">R$</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={form.couvertReais}
+                    onChange={(e) =>
+                      setForm({ ...form, couvertReais: e.target.value })
+                    }
+                    className="w-24"
+                  />
+                  <span className="text-sm text-stone-500">
+                    somado assim que a comanda senta numa mesa — diferente da
+                    taxa de serviço, o cliente já vê isso na própria conta.
                   </span>
                 </div>
               )}

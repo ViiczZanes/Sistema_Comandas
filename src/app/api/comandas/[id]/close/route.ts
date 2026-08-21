@@ -44,7 +44,10 @@ export async function POST(
     ]);
     const grossCents = orders.reduce((a, o) => a + o.totalCents, 0);
     const paidCents = payments.reduce((a, p) => a + p.amountCents, 0);
-    balanceCents = Math.max(grossCents - existing.discountCents - paidCents, 0);
+    balanceCents = Math.max(
+      grossCents + existing.couvertCents - existing.discountCents - paidCents,
+      0
+    );
 
     const previousTableId = existing.currentTableId;
     const now = new Date();
@@ -61,6 +64,7 @@ export async function POST(
         couponId: null,
         couponCode: null,
         discountCents: 0,
+        couvertCents: 0,
       },
     });
 

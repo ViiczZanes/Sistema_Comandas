@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { publish } from "@/lib/events";
+import { getSettings } from "@/lib/settings";
 
 // Cliente aperta "Preciso de ajuda" (cardápio ou tela da conta). Isso só
 // avisa o PDV — é quem circula pelo salão e pode ir até a mesa resolver.
@@ -47,9 +48,17 @@ export async function POST(
       return NextResponse.json({ error: "Mesa não encontrada." }, { status: 404 });
     }
     tableId = table.id;
+    // Mesmo racional de /api/public/orders — essa é a outra rota que
+    // pode ser a primeira a sentar a comanda numa mesa na rodada (cliente
+    // pede ajuda antes de fazer o primeiro pedido), então também precisa
+    // gravar o snapshot do couvert.
+    const settings = await getSettings(comanda.restaurantId);
     await prisma.comanda.update({
       where: { id: comanda.id },
-      data: { currentTableId: tableId },
+      data: {
+        currentTableId: tableId,
+        couvertCents: settings.couvertEnabled ? settings.couvertCents : 0,
+      },
     });
   }
 

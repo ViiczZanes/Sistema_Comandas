@@ -61,7 +61,10 @@ export async function POST(request: Request) {
     const grossCents = currentOrders.reduce((a, o) => a + o.totalCents, 0);
     // Cupom aplicado nesta rodada (ver /api/comandas/[id]/coupon) — abate do
     // total antes de calcular saldo/fechamento, igual desconto de verdade.
-    const totalCents = Math.max(grossCents - comanda.discountCents, 0);
+    // Couvert (comanda.couvertCents, snapshot da rodada — ver
+    // /api/public/orders) soma antes do desconto, como se fosse mais um
+    // item da conta.
+    const totalCents = Math.max(grossCents + comanda.couvertCents - comanda.discountCents, 0);
     const paidSoFar = currentPayments.reduce((a, p) => a + p.amountCents, 0);
     const balanceCents = totalCents - paidSoFar;
     const newPaid = paidSoFar + amountCents;
@@ -104,6 +107,7 @@ export async function POST(request: Request) {
           couponId: null,
           couponCode: null,
           discountCents: 0,
+          couvertCents: 0,
         },
       });
       if (previousTableId) {

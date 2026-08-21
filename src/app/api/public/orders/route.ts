@@ -5,6 +5,7 @@ import { nextOrderNumber } from "@/lib/orderNumber";
 import { recomputeTableStatus } from "@/lib/tableStatus";
 import { publish } from "@/lib/events";
 import { deductStockForOrderItems, applyAutoSoldOut } from "@/lib/insumos";
+import { getSettings } from "@/lib/settings";
 
 const itemSchema = z.object({
   productId: z.string().min(1),
@@ -104,6 +105,8 @@ export async function POST(request: Request) {
     }
   }
 
+  const settings = await getSettings(table.restaurantId);
+
   let depletedInsumoIds: string[] = [];
   const result = await prisma.$transaction(async (tx) => {
     let orderTotal = 0;
@@ -164,7 +167,13 @@ export async function POST(request: Request) {
     if (!comanda.currentTableId) {
       await tx.comanda.update({
         where: { id: comanda.id },
-        data: { currentTableId: table.id },
+        data: {
+          currentTableId: table.id,
+          // Couvert é cobrado por sentar à mesa, não por cadastro do
+          // cartão — por isso o snapshot acontece aqui (primeira vez que
+          // a comanda senta nesta rodada), não na criação da comanda.
+          couvertCents: settings.couvertEnabled ? settings.couvertCents : 0,
+        },
       });
     }
 

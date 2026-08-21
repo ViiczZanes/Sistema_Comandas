@@ -49,9 +49,13 @@ export default async function ComandaBillPage({
   ]);
 
   const grossCents = orders.reduce((a, o) => a + o.totalCents, 0);
-  const totalCents = Math.max(grossCents - comanda.discountCents, 0);
+  const totalCents = Math.max(grossCents + comanda.couvertCents - comanda.discountCents, 0);
   const paidCents = payments.reduce((a, p) => a + p.amountCents, 0);
   const balanceCents = Math.max(totalCents - paidCents, 0);
+  // Diferente da taxa de serviço (escondida do cliente até o fechamento),
+  // o couvert é uma cobrança conhecida — mostra a conta mesmo sem nenhum
+  // pedido lançado ainda, porque o couvert por si só já é um valor devido.
+  const hasBillToShow = orders.length > 0 || comanda.couvertCents > 0;
 
   return (
     <main className="relative mx-auto flex min-h-full w-full max-w-lg flex-1 flex-col gap-6 overflow-hidden px-4 py-8">
@@ -135,12 +139,18 @@ export default async function ComandaBillPage({
         ))}
       </section>
 
-      {orders.length > 0 && (
+      {hasBillToShow && (
         <section className="space-y-1.5 border-t border-dashed border-stone-300 pt-4">
           <div className="flex justify-between text-sm text-stone-500">
             <span>Total consumido</span>
             <span>{formatCents(grossCents)}</span>
           </div>
+          {comanda.couvertCents > 0 && (
+            <div className="flex justify-between text-sm text-stone-500">
+              <span>Couvert</span>
+              <span>{formatCents(comanda.couvertCents)}</span>
+            </div>
+          )}
           {comanda.discountCents > 0 && (
             <div className="flex justify-between text-sm text-emerald-700">
               <span>Desconto ({comanda.couponCode})</span>
